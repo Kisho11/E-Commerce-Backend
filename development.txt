@@ -1,0 +1,86 @@
+Missing Backend Endpoints & Model Changes
+1. Role System — Model Change Required
+BE UserRole only has user and admin. FE has 3 roles: customer, manager, admin.
+
+
+# Missing in UserRole enum:
+manager = "manager"
+2. Product Model — Major Gaps
+FE Field	BE Status
+productType (simple/variable/custom)	Missing — no product_type column
+variantPricing / variantGroups	Missing — no variants table
+industries (array)	Missing — no column
+categories (array, multi-category)	Wrong — BE has single category_id FK only
+salePrice	Exists (sale_price) ✓
+galleryImages	Exists via ProductImage ✓
+video + galleryVideos	Missing — no video model or upload endpoint
+3. Missing Endpoints
+Manager CRUD (Admin Dashboard → Managers Tab)
+ManagerManagement.js calls: addManager, updateManager, deleteManager
+
+Method	Endpoint	Notes
+GET	/api/v1/admin/managers	List all manager-role users
+POST	/api/v1/admin/managers	Create manager (name, email, phone)
+PUT	/api/v1/admin/managers/{id}	Update manager details
+DELETE	/api/v1/admin/managers/{id}	Delete manager
+Inventory System (Manager Dashboard → Inventory Tab)
+Entire inventory system is missing from BE. FE uses:
+
+inventory.sku, onHand, reserved, reorderLevel, reorderQty, averageDailyUsage, location, supplier, leadTimeDays
+inventory.movements[] — full stock movement history
+adjustStock(productId, { change, reason, actor }) — +1 / -1 / +10
+New models needed: Inventory, StockMovement
+
+Method	Endpoint	Notes
+GET	/api/v1/inventory/	All products with inventory details, search/filter by SKU, stock level
+POST	/api/v1/inventory/{product_id}/adjust	Adjust stock: { change, reason, actor }
+GET	/api/v1/inventory/movements	Recent stock movements across all products
+GET	/api/v1/inventory/summary	Total onHand, reserved, available counts
+Tasks System (Manager Dashboard → Tasks Tab)
+Currently hardcoded. FE shows: title, priority, due date, status, actions
+
+Method	Endpoint	Notes
+GET	/api/v1/tasks/	List tasks for current manager
+POST	/api/v1/tasks/	Create task (title, priority, due, status)
+PUT	/api/v1/tasks/{id}	Update task (status, etc.)
+DELETE	/api/v1/tasks/{id}	Delete task
+Admin Dashboard — Missing Stats
+GET /api/v1/admin/dashboard exists but is missing these stats the FE shows:
+
+Missing Stat	Notes
+low_stock_count	Products where available ≤ reorder level
+available_products	Products where stock > 0
+total_customers	Users with role=customer
+pending_reviews	Reviews awaiting moderation
+Admin Customers Tab
+FE shows customers with order count, total spent, join date, last order, address, order history.
+
+Method	Endpoint	Notes
+GET	/api/v1/admin/customers	Customers with aggregated: order_count, total_spent, last_order_date
+GET	/api/v1/admin/customers/{id}/orders	Full order history for one customer
+Admin Reports Tab (currently hardcoded)
+Method	Endpoint	Notes
+GET	/api/v1/admin/reports/sales	Total sales, order count, avg order value by period
+GET	/api/v1/admin/reports/top-categories	Revenue per category with percentage
+Manager Order Status Update
+Manager dashboard has "Mark Complete" and "Update Shipping" buttons. Current BE only allows admin:
+
+Method	Endpoint	Notes
+PUT	/api/v1/orders/{id}/status	Allow manager role (currently admin-only)
+Product Video Upload (ProductManagement → 1–5 videos)
+Method	Endpoint	Notes
+POST	/api/v1/products/{id}/videos	Upload product video
+DELETE	/api/v1/products/{id}/videos/{video_id}	Delete product video
+Manager Dashboard Stats
+Method	Endpoint	Notes
+GET	/api/v1/manager/dashboard	pending_orders, low_stock_count, pending_reviews, total_orders
+Priority Order to Build
+Add manager role to UserRole enum
+Fix Product model — add product_type, industries, many-to-many categories, variants table, video support
+Inventory system — new Inventory + StockMovement models + 4 endpoints
+Manager CRUD — 4 endpoints under /api/v1/admin/managers
+Admin dashboard stats — add missing counts
+Admin customers endpoint — with aggregations
+Tasks system — new Task model + 4 endpoints
+Reports endpoints — sales + top categories
+Product video upload — 2 endpoints

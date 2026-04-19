@@ -28,6 +28,19 @@ class UserResponse(UserBase):
     model_config = {"from_attributes": True}
 
 
+class ManagerCreate(BaseModel):
+    email: EmailStr
+    full_name: str
+    phone: Optional[str] = None
+    password: Optional[str] = None  # if omitted, a temp password is generated
+
+
+class ManagerUpdate(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[EmailStr] = None
+
+
 class Token(BaseModel):
     access_token: str
     refresh_token: str

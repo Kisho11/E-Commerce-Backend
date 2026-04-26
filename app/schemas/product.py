@@ -58,6 +58,7 @@ class CategorySlim(BaseModel):
     id: int
     name: str
     slug: str
+    parent_id: Optional[int] = None
 
     model_config = {"from_attributes": True}
 

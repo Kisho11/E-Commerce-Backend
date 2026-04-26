@@ -10,7 +10,7 @@ from app.models.order import Order, OrderStatus, PaymentStatus
 from app.models.product import Product
 from app.models.inventory import Inventory
 from app.models.review import Review
-from app.schemas.user import UserResponse, ManagerCreate, ManagerUpdate
+from app.schemas.user import UserResponse, ManagerCreate, ManagerUpdate, ManagerResponse
 from app.core.dependencies import get_current_admin
 from app.core.security import hash_password
 
@@ -101,7 +101,7 @@ def list_managers(db: Session = Depends(get_db), admin=Depends(get_current_admin
     return db.query(User).filter(User.role == UserRole.manager).order_by(User.created_at.desc()).all()
 
 
-@router.post("/managers", response_model=UserResponse, status_code=201)
+@router.post("/managers", response_model=ManagerResponse, status_code=201)
 def create_manager(body: ManagerCreate, db: Session = Depends(get_db), admin=Depends(get_current_admin)):
     if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(status_code=409, detail="Email already registered")
@@ -117,7 +117,16 @@ def create_manager(body: ManagerCreate, db: Session = Depends(get_db), admin=Dep
     db.add(user)
     db.commit()
     db.refresh(user)
-    return user
+    return {
+        "id": user.id,
+        "email": user.email,
+        "full_name": user.full_name,
+        "phone": user.phone,
+        "role": user.role,
+        "is_active": user.is_active,
+        "created_at": user.created_at,
+        "temporary_password": password,
+    }
 
 
 @router.put("/managers/{manager_id}", response_model=UserResponse)

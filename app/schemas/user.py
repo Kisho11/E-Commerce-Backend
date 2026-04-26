@@ -41,6 +41,10 @@ class ManagerUpdate(BaseModel):
     email: Optional[EmailStr] = None
 
 
+class ManagerResponse(UserResponse):
+    temporary_password: Optional[str] = None
+
+
 class Token(BaseModel):
     access_token: str
     refresh_token: str
@@ -49,3 +53,17 @@ class Token(BaseModel):
 
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    reset_token: str
+    new_password: str
+
+
+class PasswordResetResponse(BaseModel):
+    message: str
+    reset_token: Optional[str] = None

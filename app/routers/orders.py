@@ -1,11 +1,13 @@
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 from typing import List, Optional
 from app.database import get_db
 from app.models.order import Order, OrderItem, OrderStatus
 from app.models.cart import Cart, CartItem
 from app.models.address import Address
+from app.models.product import Product
 from app.schemas.order import OrderCreate, OrderResponse, OrderStatusUpdate
 from app.core.dependencies import get_current_user, get_current_admin
 
@@ -30,10 +32,32 @@ def create_order(
     if not cart or not cart.items:
         raise HTTPException(status_code=400, detail="Cart is empty")
 
-    # Validate stock and compute total
+    locked_cart = (
+        db.query(Cart)
+        .filter(Cart.user_id == current_user.id)
+        .with_for_update()
+        .first()
+    )
+    if not locked_cart or not locked_cart.items:
+        raise HTTPException(status_code=400, detail="Cart is empty")
+
+    product_ids = [item.product_id for item in locked_cart.items]
+    locked_products = (
+        db.execute(
+            select(Product)
+            .where(Product.id.in_(product_ids))
+            .with_for_update()
+        )
+        .scalars()
+        .all()
+    )
+    products_by_id = {product.id: product for product in locked_products}
+
     total = Decimal("0")
-    for item in cart.items:
-        product = item.product
+    for item in locked_cart.items:
+        product = products_by_id.get(item.product_id)
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found during checkout")
         if not product.is_active:
             raise HTTPException(
                 status_code=400, detail=f"Product '{product.name}' is no longer available"
@@ -54,8 +78,8 @@ def create_order(
     db.add(order)
     db.flush()
 
-    for item in cart.items:
-        product = item.product
+    for item in locked_cart.items:
+        product = products_by_id[item.product_id]
         price = product.sale_price or product.price
         db.add(
             OrderItem(
@@ -68,7 +92,7 @@ def create_order(
         )
         product.stock_quantity -= item.quantity
 
-    db.query(CartItem).filter(CartItem.cart_id == cart.id).delete()
+    db.query(CartItem).filter(CartItem.cart_id == locked_cart.id).delete()
     db.commit()
     db.refresh(order)
     return order

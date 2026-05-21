@@ -1,20 +1,30 @@
-from pydantic import field_validator
+import secrets
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 from typing import List
 
 
 class Settings(BaseSettings):
     APP_NAME: str = "Furniture Store API"
-    DEBUG: bool = False
+    DEBUG: bool = Field(False, validation_alias=AliasChoices("APP_DEBUG", "DEBUG"))
 
     # Database
     DATABASE_URL: str = "postgresql://postgres:password@localhost:5432/furniture_store"
+    DEV_DATABASE_FALLBACK_URL: str = "sqlite:///./dev.db"
 
     # JWT
     SECRET_KEY: str = "change-this-secret-key-in-production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 15
+    TRUST_PROXY_HEADERS: bool = False
+    ACCESS_TOKEN_COOKIE_NAME: str = "access_token"
+    REFRESH_TOKEN_COOKIE_NAME: str = "refresh_token"
+    CSRF_COOKIE_NAME: str = "csrf_token"
+    CSRF_HEADER_NAME: str = "X-CSRF-Token"
+    COOKIE_SAMESITE: str = "lax"
+    COOKIE_SECURE: bool = False
 
     # Stripe
     STRIPE_SECRET_KEY: str = "sk_test_placeholder"
@@ -23,9 +33,22 @@ class Settings(BaseSettings):
     # File Upload
     UPLOAD_DIR: str = "uploads"
     MAX_FILE_SIZE: int = 5 * 1024 * 1024  # 5MB
+    MAX_VIDEO_FILE_SIZE: int = 20 * 1024 * 1024  # 20MB
 
     # CORS
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173"]
+    ALLOWED_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
+    TRUSTED_HOSTS: List[str] = ["localhost", "127.0.0.1", "testserver"]
+    ENABLE_DOCS: bool = False
+    EXPOSE_PASSWORD_RESET_TOKEN: bool = False
+    AUTH_RATE_LIMIT_WINDOW_SECONDS: int = 60
+    AUTH_RATE_LIMIT_MAX_REQUESTS: int = 5
+    AUTH_LOCKOUT_MAX_ATTEMPTS: int = 5
+    AUTH_LOCKOUT_MINUTES: int = 15
 
     @field_validator("DEBUG", mode="before")
     @classmethod
@@ -40,8 +63,45 @@ class Settings(BaseSettings):
                 return False
         return value
 
+    @field_validator("ALLOWED_ORIGINS", "TRUSTED_HOSTS", mode="before")
+    @classmethod
+    def parse_list_env(cls, value):
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if not cleaned:
+                return []
+            if cleaned.startswith("[") and cleaned.endswith("]"):
+                import json
+
+                return json.loads(cleaned)
+            return [item.strip() for item in cleaned.split(",") if item.strip()]
+        return value
+
+    @model_validator(mode="after")
+    def validate_security_settings(self):
+        if self.DEBUG:
+            if not self.ENABLE_DOCS:
+                self.ENABLE_DOCS = True
+
+        if not self.SECRET_KEY or self.SECRET_KEY == "replace-with-a-long-random-secret-key":
+            if self.DEBUG:
+                self.SECRET_KEY = secrets.token_urlsafe(48)
+
+        insecure_default_secret = self.SECRET_KEY == "change-this-secret-key-in-production"
+        if insecure_default_secret and not self.DEBUG:
+            raise ValueError("SECRET_KEY must be changed before running outside DEBUG mode.")
+
+        if len(self.SECRET_KEY) < 32 and not self.DEBUG:
+            raise ValueError("SECRET_KEY must be at least 32 characters long outside DEBUG mode.")
+
+        if not self.DEBUG and not self.COOKIE_SECURE:
+            self.COOKIE_SECURE = True
+
+        return self
+
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 
 settings = Settings()

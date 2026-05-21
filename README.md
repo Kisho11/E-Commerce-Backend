@@ -104,6 +104,10 @@ STRIPE_SECRET_KEY=sk_test_your_stripe_key_here
 STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret_here
 ```
 
+Admin accounts are stored in the database, not in source code or environment variables. Create them through a database seed or an admin-management flow, and keep only infrastructure secrets like `DATABASE_URL` and `SECRET_KEY` in `.env`.
+
+> Do not commit `.env` or real secrets to git. The repository already ignores `.env` and other local secret files.
+
 ### 4. Create the database
 
 ```bash

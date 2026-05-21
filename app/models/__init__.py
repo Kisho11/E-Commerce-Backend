@@ -1,5 +1,5 @@
 # Import all models so SQLAlchemy registers them with Base.metadata
-from app.models.user import User
+from app.models.user import User, AdminAuditLog
 from app.models.address import Address
 from app.models.category import Category
 from app.models.product import Product, ProductImage, ProductVideo, ProductVariantGroup, ProductVariant
@@ -11,6 +11,7 @@ from app.models.task import Task
 
 __all__ = [
     "User",
+    "AdminAuditLog",
     "Address",
     "Category",
     "Product",

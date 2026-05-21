@@ -1,15 +1,13 @@
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from jose import JWTError
 from app.database import get_db
 from app.core.security import decode_token
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+from app.config import settings
 
 
 def get_current_user(
-    token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
+    request: Request, db: Session = Depends(get_db)
 ):
     from app.models.user import User
 
@@ -18,16 +16,30 @@ def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    token = None
+    authorization = request.headers.get("Authorization", "")
+    if authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        token = request.cookies.get(settings.ACCESS_TOKEN_COOKIE_NAME)
+    if not token:
+        raise credentials_exception
+
     try:
         payload = decode_token(token)
+        if payload.get("type") != "access":
+            raise credentials_exception
         user_id = payload.get("sub")
         if user_id is None:
             raise credentials_exception
+        token_version = int(payload.get("rv", 0))
     except JWTError:
         raise credentials_exception
 
     user = db.query(User).filter(User.id == int(user_id)).first()
     if user is None or not user.is_active:
+        raise credentials_exception
+    if user.token_version != token_version:
         raise credentials_exception
     return user
 

@@ -12,8 +12,8 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://postgres:password@localhost:5432/furniture_store"
     DEV_DATABASE_FALLBACK_URL: str = "sqlite:///./dev.db"
 
-    # JWT
-    SECRET_KEY: str = "change-this-secret-key-in-production"
+    # JWT — must be set via environment variable; no insecure default
+    SECRET_KEY: str = ""
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -44,7 +44,6 @@ class Settings(BaseSettings):
     ]
     TRUSTED_HOSTS: List[str] = ["localhost", "127.0.0.1", "testserver"]
     ENABLE_DOCS: bool = False
-    EXPOSE_PASSWORD_RESET_TOKEN: bool = False
     AUTH_RATE_LIMIT_WINDOW_SECONDS: int = 60
     AUTH_RATE_LIMIT_MAX_REQUESTS: int = 5
     AUTH_LOCKOUT_MAX_ATTEMPTS: int = 5
@@ -83,16 +82,14 @@ class Settings(BaseSettings):
             if not self.ENABLE_DOCS:
                 self.ENABLE_DOCS = True
 
-        if not self.SECRET_KEY or self.SECRET_KEY == "replace-with-a-long-random-secret-key":
+        if not self.SECRET_KEY:
             if self.DEBUG:
                 self.SECRET_KEY = secrets.token_urlsafe(48)
-
-        insecure_default_secret = self.SECRET_KEY == "change-this-secret-key-in-production"
-        if insecure_default_secret and not self.DEBUG:
-            raise ValueError("SECRET_KEY must be changed before running outside DEBUG mode.")
+            else:
+                raise ValueError("SECRET_KEY must be set via environment variable before running.")
 
         if len(self.SECRET_KEY) < 32 and not self.DEBUG:
-            raise ValueError("SECRET_KEY must be at least 32 characters long outside DEBUG mode.")
+            raise ValueError("SECRET_KEY must be at least 32 characters long.")
 
         if not self.DEBUG and not self.COOKIE_SECURE:
             self.COOKIE_SECURE = True

@@ -1,3 +1,4 @@
+import logging
 import secrets
 import string
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -14,6 +15,8 @@ from app.schemas.user import UserResponse, ManagerCreate, ManagerUpdate, Manager
 from app.core.dependencies import get_current_admin
 from app.core.security import hash_password
 from app.core.audit import log_admin_action
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -59,7 +62,7 @@ def get_dashboard(db: Session = Depends(get_db), admin=Depends(get_current_admin
 
 @router.get("/users", response_model=List[UserResponse])
 def get_all_users(
-    page: int = Query(1, ge=1),
+    page: int = Query(1, ge=1, le=10000),
     per_page: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin),
@@ -145,16 +148,10 @@ def create_manager(body: ManagerCreate, db: Session = Depends(get_db), admin=Dep
     )
     db.commit()
     db.refresh(user)
-    return {
-        "id": user.id,
-        "email": user.email,
-        "full_name": user.full_name,
-        "phone": user.phone,
-        "role": user.role,
-        "is_active": user.is_active,
-        "created_at": user.created_at,
-        "temporary_password": password,
-    }
+    # Temporary password must be delivered out-of-band (e.g. email). Never return it in the API response.
+    if not body.password:
+        logger.info("Temporary password generated for new manager %s — deliver via email", normalized_email)
+    return user
 
 
 @router.put("/managers/{manager_id}", response_model=UserResponse)
@@ -207,12 +204,12 @@ def delete_manager(manager_id: int, db: Session = Depends(get_db), admin=Depends
 
 @router.get("/customers")
 def list_customers(
-    page: int = Query(1, ge=1),
+    page: int = Query(1, ge=1, le=10000),
     per_page: int = Query(20, ge=1, le=100),
     search: Optional[str] = Query(None),
     min_orders: Optional[int] = Query(None, ge=0),
-    sort_by: str = Query("created_at"),
-    sort_dir: str = Query("desc"),
+    sort_by: str = Query("created_at", enum=["name", "email", "created_at"]),
+    sort_dir: str = Query("desc", enum=["asc", "desc"]),
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin),
 ):
@@ -277,6 +274,13 @@ def get_customer_orders(
     user = db.query(User).filter(User.id == customer_id, User.role == UserRole.user).first()
     if not user:
         raise HTTPException(status_code=404, detail="Customer not found")
+    log_admin_action(
+        db,
+        admin_user_id=admin.id,
+        action="view_customer_orders",
+        target_user_id=user.id,
+        details=f"Admin accessed order history for customer {user.email}",
+    )
     orders = (
         db.query(Order)
         .filter(Order.user_id == customer_id)

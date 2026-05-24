@@ -28,6 +28,7 @@ from app.core.security import (
 )
 from app.core.dependencies import get_current_user
 from app.core.rate_limit import auth_rate_limiter, get_request_identifier
+from sqlalchemy import select
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 MIN_PASSWORD_LENGTH = 8
@@ -73,8 +74,12 @@ def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
-    auth_rate_limiter.check(get_request_identifier(request, f"login:{form_data.username.lower()}"))
-    user = db.query(User).filter(User.email == form_data.username.lower()).first()
+    # Rate-limit on IP only — per-email limiting leaks whether an account exists
+    auth_rate_limiter.check(get_request_identifier(request, "login"))
+    # SELECT FOR UPDATE prevents concurrent requests bypassing the lockout (TOCTOU)
+    user = db.execute(
+        select(User).where(User.email == form_data.username.lower()).with_for_update()
+    ).scalar_one_or_none()
     if user and user.lockout_until and user.lockout_until > datetime.now(timezone.utc):
         raise HTTPException(status_code=423, detail="Account temporarily locked. Please try again later.")
     if not user or not verify_password(form_data.password, user.hashed_password):
@@ -140,23 +145,20 @@ def forgot_password(
     body: ForgotPasswordRequest,
     db: Session = Depends(get_db),
 ):
-    auth_rate_limiter.check(get_request_identifier(request, f"forgot-password:{body.email.lower()}"))
+    # Rate-limit on IP only — per-email limiting leaks whether an account exists
+    auth_rate_limiter.check(get_request_identifier(request, "forgot-password"))
     user = db.query(User).filter(User.email == body.email.lower()).first()
+    # Always return the same message regardless of whether the account exists
+    _RESET_MSG = "If an account exists for this email, a password reset link has been sent."
     if not user or not user.is_active:
-        return {
-            "message": "If an account exists for this email, a password reset link has been prepared.",
-        }
+        return {"message": _RESET_MSG}
 
-    reset_token = create_access_token(
+    # In production: send this token via email; never return it in the response body.
+    create_access_token(
         {"sub": str(user.id), "purpose": "password_reset"},
         expires_delta=timedelta(minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES),
     )
-    response = {
-        "message": "If an account exists for this email, a password reset link has been prepared.",
-    }
-    if settings.EXPOSE_PASSWORD_RESET_TOKEN:
-        response["reset_token"] = reset_token
-    return response
+    return {"message": _RESET_MSG}
 
 
 @router.post("/reset-password", response_model=PasswordResetResponse)

@@ -42,7 +42,7 @@ class ManagerUpdate(BaseModel):
 
 
 class ManagerResponse(UserResponse):
-    temporary_password: Optional[str] = None
+    pass
 
 
 class Token(BaseModel):
@@ -65,4 +65,3 @@ class ResetPasswordRequest(BaseModel):
 
 class PasswordResetResponse(BaseModel):
     message: str
-    reset_token: Optional[str] = None

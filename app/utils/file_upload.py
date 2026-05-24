@@ -62,10 +62,16 @@ async def save_upload(
 
     filename = f"{uuid.uuid4().hex}.{ext}"
 
-    save_dir = os.path.join(settings.UPLOAD_DIR, folder)
-    os.makedirs(save_dir, exist_ok=True)
+    # Resolve absolute base dir and final path to block symlink traversal
+    base_dir = os.path.realpath(os.path.abspath(settings.UPLOAD_DIR))
+    save_dir = os.path.realpath(os.path.join(base_dir, folder))
+    if not save_dir.startswith(base_dir + os.sep):
+        raise HTTPException(status_code=400, detail="Invalid upload path")
 
-    async with aiofiles.open(os.path.join(save_dir, filename), "wb") as f:
+    os.makedirs(save_dir, exist_ok=True)
+    final_path = os.path.join(save_dir, filename)
+
+    async with aiofiles.open(final_path, "wb") as f:
         await f.write(contents)
 
     return f"/uploads/{folder}/{filename}"

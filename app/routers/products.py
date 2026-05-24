@@ -105,7 +105,8 @@ def get_products(
         query = query.filter(Product.product_type == product_type)
 
     total = query.count()
-    sort_col = getattr(Product, sort_by)
+    _SORT_COLS = {"price": Product.price, "created_at": Product.created_at, "name": Product.name}
+    sort_col = _SORT_COLS.get(sort_by, Product.created_at)
     query = query.order_by(sort_col.asc() if sort_order == "asc" else sort_col.desc())
     products = query.offset((page - 1) * per_page).limit(per_page).all()
 

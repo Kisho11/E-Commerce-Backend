@@ -10,9 +10,10 @@ from app.models.order import Order, OrderStatus, PaymentStatus
 from app.models.product import Product
 from app.models.inventory import Inventory
 from app.models.review import Review
-from app.schemas.user import UserResponse, ManagerCreate, ManagerUpdate
+from app.schemas.user import UserResponse, ManagerCreate, ManagerUpdate, ManagerResponse
 from app.core.dependencies import get_current_admin
 from app.core.security import hash_password
+from app.core.audit import log_admin_action
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -77,7 +78,16 @@ def toggle_user_active(user_id: int, db: Session = Depends(get_db), admin=Depend
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if user.id == admin.id:
+        raise HTTPException(status_code=400, detail="You cannot deactivate your own account")
     user.is_active = not user.is_active
+    log_admin_action(
+        db,
+        admin_user_id=admin.id,
+        action="toggle_user_active",
+        target_user_id=user.id,
+        details=f"is_active={user.is_active}",
+    )
     db.commit()
     db.refresh(user)
     return user
@@ -88,7 +98,16 @@ def make_admin(user_id: int, db: Session = Depends(get_db), admin=Depends(get_cu
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if not user.is_active:
+        raise HTTPException(status_code=400, detail="Inactive users cannot be promoted")
     user.role = UserRole.admin
+    log_admin_action(
+        db,
+        admin_user_id=admin.id,
+        action="make_admin",
+        target_user_id=user.id,
+        details="Promoted user to admin",
+    )
     db.commit()
     db.refresh(user)
     return user
@@ -101,23 +120,41 @@ def list_managers(db: Session = Depends(get_db), admin=Depends(get_current_admin
     return db.query(User).filter(User.role == UserRole.manager).order_by(User.created_at.desc()).all()
 
 
-@router.post("/managers", response_model=UserResponse, status_code=201)
+@router.post("/managers", response_model=ManagerResponse, status_code=201)
 def create_manager(body: ManagerCreate, db: Session = Depends(get_db), admin=Depends(get_current_admin)):
-    if db.query(User).filter(User.email == body.email).first():
+    normalized_email = body.email.lower()
+    if db.query(User).filter(User.email == normalized_email).first():
         raise HTTPException(status_code=409, detail="Email already registered")
     alphabet = string.ascii_letters + string.digits
     password = body.password or "".join(secrets.choice(alphabet) for _ in range(12))
     user = User(
-        email=body.email,
+        email=normalized_email,
         full_name=body.full_name,
         phone=body.phone,
         role=UserRole.manager,
         hashed_password=hash_password(password),
     )
     db.add(user)
+    db.flush()
+    log_admin_action(
+        db,
+        admin_user_id=admin.id,
+        action="create_manager",
+        target_user_id=user.id,
+        details=f"Created manager account for {normalized_email}",
+    )
     db.commit()
     db.refresh(user)
-    return user
+    return {
+        "id": user.id,
+        "email": user.email,
+        "full_name": user.full_name,
+        "phone": user.phone,
+        "role": user.role,
+        "is_active": user.is_active,
+        "created_at": user.created_at,
+        "temporary_password": password,
+    }
 
 
 @router.put("/managers/{manager_id}", response_model=UserResponse)
@@ -130,8 +167,21 @@ def update_manager(
     manager = db.query(User).filter(User.id == manager_id, User.role == UserRole.manager).first()
     if not manager:
         raise HTTPException(status_code=404, detail="Manager not found")
-    for field, value in body.model_dump(exclude_unset=True).items():
+    updates = body.model_dump(exclude_unset=True)
+    if "email" in updates:
+        updates["email"] = updates["email"].lower()
+        existing = db.query(User).filter(User.email == updates["email"], User.id != manager_id).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="Email already registered")
+    for field, value in updates.items():
         setattr(manager, field, value)
+    log_admin_action(
+        db,
+        admin_user_id=admin.id,
+        action="update_manager",
+        target_user_id=manager.id,
+        details=f"Updated fields: {', '.join(sorted(updates.keys()))}",
+    )
     db.commit()
     db.refresh(manager)
     return manager
@@ -142,6 +192,13 @@ def delete_manager(manager_id: int, db: Session = Depends(get_db), admin=Depends
     manager = db.query(User).filter(User.id == manager_id, User.role == UserRole.manager).first()
     if not manager:
         raise HTTPException(status_code=404, detail="Manager not found")
+    log_admin_action(
+        db,
+        admin_user_id=admin.id,
+        action="delete_manager",
+        target_user_id=manager.id,
+        details=f"Deleted manager {manager.email}",
+    )
     db.delete(manager)
     db.commit()
 

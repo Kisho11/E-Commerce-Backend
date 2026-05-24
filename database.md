@@ -108,7 +108,7 @@ psql -U postgres -d furniture_store
 
 ```sql
 -- Replace the email with the one you registered
-UPDATE users SET role = 'admin' WHERE email = 'admin@elamshelf.com';
+UPDATE users SET role = 'admin' WHERE email = 'dorington1996@gmail.com';
 \q
 ```
 
@@ -184,5 +184,5 @@ WHERE email = 'manager@elamshelf.com';
 
 | Role | Email | Password |
 |---|---|---|
-| Admin | admin@elamshelf.com | admin123 |
+| Admin | dorington1996@gmail.com | Asd1q12w |
 | Manager | manager@elamshelf.com | manager123 |

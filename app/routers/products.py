@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from typing import List, Optional
 from slugify import slugify
+from app.config import settings
 from app.database import get_db
 from app.models.product import Product, ProductImage, ProductVideo, ProductVariantGroup, ProductVariant
 from app.models.category import Category
@@ -11,7 +12,7 @@ from app.schemas.product import (
     ProductCreate, ProductUpdate, ProductResponse, ProductListResponse, ProductVideoResponse,
 )
 from app.core.dependencies import get_current_admin
-from app.utils.file_upload import save_upload
+from app.utils.file_upload import save_upload, VIDEO_ALLOWED_TYPES
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
@@ -259,7 +260,13 @@ async def upload_product_video(
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    video_url = await save_upload(file, folder="product_videos")
+    video_url = await save_upload(
+        file,
+        folder="product_videos",
+        allowed_types=VIDEO_ALLOWED_TYPES,
+        max_size=settings.MAX_VIDEO_FILE_SIZE,
+        validate_image=False,
+    )
     sort_order = db.query(ProductVideo).filter(ProductVideo.product_id == product_id).count()
     vid = ProductVideo(product_id=product_id, video_url=video_url, sort_order=sort_order)
     db.add(vid)

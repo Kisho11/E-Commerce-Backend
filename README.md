@@ -104,7 +104,26 @@ STRIPE_SECRET_KEY=sk_test_your_stripe_key_here
 STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret_here
 ```
 
-Admin accounts are stored in the database, not in source code or environment variables. Create them through a database seed or an admin-management flow, and keep only infrastructure secrets like `DATABASE_URL` and `SECRET_KEY` in `.env`.
+Admin accounts are stored in the database. For local development, you can create or reset a known admin login with:
+
+```bash
+python scripts/create_admin.py
+```
+
+Default local admin credentials:
+
+```text
+email: admin@elamshelf.com
+password: Admin@12345
+```
+
+You can override them when needed:
+
+```bash
+python scripts/create_admin.py --email admin@example.com --password 'StrongPass123!'
+```
+
+Keep only infrastructure secrets like `DATABASE_URL` and `SECRET_KEY` in `.env`.
 
 > Do not commit `.env` or real secrets to git. The repository already ignores `.env` and other local secret files.
 

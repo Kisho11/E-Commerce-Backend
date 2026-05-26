@@ -1,4 +1,6 @@
+import os
 import secrets
+from urllib.parse import urlparse
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 from typing import List
@@ -79,6 +81,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_security_settings(self):
+        raw_debug = os.getenv("APP_DEBUG", os.getenv("DEBUG"))
+        if raw_debug is not None:
+            self.DEBUG = self.parse_debug(raw_debug)
+
         if self.DEBUG:
             if not self.ENABLE_DOCS:
                 self.ENABLE_DOCS = True
@@ -94,7 +100,12 @@ class Settings(BaseSettings):
         if len(self.SECRET_KEY) < 32 and not self.DEBUG:
             raise ValueError("SECRET_KEY must be at least 32 characters long outside DEBUG mode.")
 
-        if not self.DEBUG and not self.COOKIE_SECURE:
+        parsed_database_url = urlparse(self.DATABASE_URL)
+        is_local_sqlite = self.DATABASE_URL.startswith("sqlite")
+        is_local_postgres = parsed_database_url.hostname in {"localhost", "127.0.0.1"}
+        is_local_database = is_local_sqlite or is_local_postgres
+
+        if not self.DEBUG and not self.COOKIE_SECURE and not is_local_database:
             self.COOKIE_SECURE = True
 
         return self

@@ -35,7 +35,9 @@ class Settings(BaseSettings):
     # File Upload
     UPLOAD_DIR: str = "uploads"
     MAX_FILE_SIZE: int = 5 * 1024 * 1024  # 5MB
-    MAX_VIDEO_FILE_SIZE: int = 20 * 1024 * 1024  # 20MB
+
+    # reCAPTCHA
+    RECAPTCHA_SECRET_KEY: str = ""
 
     # CORS
     ALLOWED_ORIGINS: List[str] = [

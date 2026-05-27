@@ -12,6 +12,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8, max_length=128)
+    recaptcha_token: str = Field(..., min_length=1)
 
 
 class UserUpdate(BaseModel):
@@ -56,11 +57,13 @@ class RefreshTokenRequest(BaseModel):
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
+    recaptcha_token: str = Field(..., min_length=1)
 
 
 class ResetPasswordRequest(BaseModel):
     reset_token: str
     new_password: str = Field(..., min_length=8, max_length=128)
+    recaptcha_token: str = Field(..., min_length=1)
 
 
 class PasswordResetResponse(BaseModel):

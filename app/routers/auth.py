@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi import Form
 from jose import JWTError
 from sqlalchemy.orm import Session
 from app.config import settings
@@ -27,10 +27,29 @@ from app.core.security import (
     generate_csrf_token,
 )
 from app.core.dependencies import get_current_user
+from app.core.recaptcha import verify_recaptcha_token
 from app.core.rate_limit import auth_rate_limiter, get_request_identifier
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 MIN_PASSWORD_LENGTH = 8
+
+
+class LoginForm:
+    def __init__(
+        self,
+        username: str = Form(...),
+        password: str = Form(...),
+        scope: str = Form(default=""),
+        client_id: Optional[str] = Form(default=None),
+        client_secret: Optional[str] = Form(default=None),
+        recaptcha_token: str = Form(...),
+    ):
+        self.username = username
+        self.password = password
+        self.scope = scope
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.recaptcha_token = recaptcha_token
 
 
 def _record_failed_login(user: User, db: Session) -> None:
@@ -49,7 +68,8 @@ def _clear_login_failures(user: User, db: Session) -> None:
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def register(user_data: UserCreate, db: Session = Depends(get_db)):
+def register(request: Request, user_data: UserCreate, db: Session = Depends(get_db)):
+    verify_recaptcha_token(user_data.recaptcha_token, request.client.host if request.client else None)
     normalized_email = user_data.email.lower()
     if db.query(User).filter(User.email == normalized_email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -70,10 +90,11 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
 def login(
     request: Request,
     response: Response,
-    form_data: OAuth2PasswordRequestForm = Depends(),
+    form_data: LoginForm = Depends(),
     db: Session = Depends(get_db),
 ):
     auth_rate_limiter.check(get_request_identifier(request, f"login:{form_data.username.lower()}"))
+    verify_recaptcha_token(form_data.recaptcha_token, request.client.host if request.client else None)
     user = db.query(User).filter(User.email == form_data.username.lower()).first()
     if user and user.lockout_until and user.lockout_until > datetime.now(timezone.utc):
         raise HTTPException(status_code=423, detail="Account temporarily locked. Please try again later.")
@@ -141,6 +162,7 @@ def forgot_password(
     db: Session = Depends(get_db),
 ):
     auth_rate_limiter.check(get_request_identifier(request, f"forgot-password:{body.email.lower()}"))
+    verify_recaptcha_token(body.recaptcha_token, request.client.host if request.client else None)
     user = db.query(User).filter(User.email == body.email.lower()).first()
     if not user or not user.is_active:
         return {
@@ -167,6 +189,7 @@ def reset_password(
     db: Session = Depends(get_db),
 ):
     auth_rate_limiter.check(get_request_identifier(request, "reset-password"))
+    verify_recaptcha_token(body.recaptcha_token, request.client.host if request.client else None)
     if len(body.new_password) < MIN_PASSWORD_LENGTH:
         raise HTTPException(
             status_code=400,

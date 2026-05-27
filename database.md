@@ -152,7 +152,6 @@ WHERE email = 'manager@elamshelf.com';
 | `products` | Product catalogue |
 | `product_categories` | Many-to-many: products ↔ categories |
 | `product_images` | Product image gallery |
-| `product_videos` | Product video gallery |
 | `product_variant_groups` | Variant attribute groups (e.g. Color) |
 | `product_variants` | Individual variant options (e.g. Red, Blue) |
 | `inventory` | Per-product stock record |

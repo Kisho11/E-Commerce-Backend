@@ -1,17 +1,14 @@
 import io
 import os
 import uuid
-from typing import Optional
 import aiofiles
 from PIL import Image, UnidentifiedImageError
 from fastapi import UploadFile, HTTPException
 from app.config import settings
 
 IMAGE_ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
-VIDEO_ALLOWED_TYPES = {"video/mp4", "video/webm", "video/quicktime"}
-SAFE_FOLDERS = {"general", "products", "product_videos", "categories"}
+SAFE_FOLDERS = {"general", "products", "categories"}
 IMAGE_EXTENSIONS = {"jpeg", "jpg", "png", "webp", "gif"}
-VIDEO_EXTENSIONS = {"mp4", "webm", "mov"}
 
 
 def _normalize_folder(folder: str) -> str:
@@ -32,33 +29,26 @@ def _validate_image(contents: bytes) -> None:
 async def save_upload(
     file: UploadFile,
     folder: str = "general",
-    *,
-    allowed_types=None,
-    max_size: Optional[int] = None,
-    validate_image: bool = True,
 ) -> str:
-    allowed_types = allowed_types or IMAGE_ALLOWED_TYPES
     folder = _normalize_folder(folder)
 
-    if file.content_type not in allowed_types:
+    if file.content_type not in IMAGE_ALLOWED_TYPES:
         raise HTTPException(
             status_code=400,
             detail="Invalid file type",
         )
 
     contents = await file.read()
-    size_limit = max_size or settings.MAX_FILE_SIZE
+    size_limit = settings.MAX_FILE_SIZE
     if len(contents) > size_limit:
         max_mb = size_limit // (1024 * 1024)
         raise HTTPException(status_code=400, detail=f"File too large. Max {max_mb}MB allowed")
 
     ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "jpg"
-    allowed_extensions = IMAGE_EXTENSIONS if validate_image else VIDEO_EXTENSIONS
-    if ext not in allowed_extensions:
+    if ext not in IMAGE_EXTENSIONS:
         raise HTTPException(status_code=400, detail="Invalid file extension")
 
-    if validate_image:
-        _validate_image(contents)
+    _validate_image(contents)
 
     filename = f"{uuid.uuid4().hex}.{ext}"
 

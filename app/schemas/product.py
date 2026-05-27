@@ -14,14 +14,6 @@ class ProductImageResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class ProductVideoResponse(BaseModel):
-    id: int
-    video_url: str
-    sort_order: int
-
-    model_config = {"from_attributes": True}
-
-
 class ProductVariantBase(BaseModel):
     value: str
     price_modifier: Decimal = Decimal("0")
@@ -71,7 +63,7 @@ class ProductBase(BaseModel):
     sale_price: Optional[Decimal] = None
     stock_quantity: int = 0
     sku: Optional[str] = None
-    product_type: ProductType = ProductType.simple
+    product_type: Optional[ProductType] = None
     industries: Optional[List[str]] = None
     is_active: bool = True
     is_featured: bool = False
@@ -103,7 +95,6 @@ class ProductResponse(ProductBase):
     slug: str
     categories: List[CategorySlim] = []
     images: List[ProductImageResponse] = []
-    videos: List[ProductVideoResponse] = []
     variant_groups: List[ProductVariantGroupResponse] = []
     avg_rating: Optional[float] = None
     review_count: int = 0

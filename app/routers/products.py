@@ -3,16 +3,15 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from typing import List, Optional
 from slugify import slugify
-from app.config import settings
 from app.database import get_db
-from app.models.product import Product, ProductImage, ProductVideo, ProductVariantGroup, ProductVariant
+from app.models.product import Product, ProductImage, ProductVariantGroup, ProductVariant, ProductType
 from app.models.category import Category
 from app.models.review import Review
 from app.schemas.product import (
-    ProductCreate, ProductUpdate, ProductResponse, ProductListResponse, ProductVideoResponse,
+    ProductCreate, ProductUpdate, ProductResponse, ProductListResponse,
 )
 from app.core.dependencies import get_current_admin
-from app.utils.file_upload import save_upload, VIDEO_ALLOWED_TYPES
+from app.utils.file_upload import save_upload
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
@@ -68,6 +67,18 @@ def _set_variant_groups(product: Product, variant_groups_data: list, db: Session
                 sku_suffix=v_data.sku_suffix,
             )
             db.add(v)
+
+
+def _infer_product_type(explicit_type: Optional[ProductType], variant_groups_data: Optional[list]) -> ProductType:
+    if explicit_type == ProductType.custom:
+        return ProductType.custom
+
+    if variant_groups_data:
+        has_variants = any(getattr(group, "variants", None) for group in variant_groups_data)
+        if has_variants:
+            return ProductType.variable
+
+    return ProductType.simple
 
 
 @router.get("/", response_model=ProductListResponse)
@@ -151,6 +162,7 @@ def create_product(
 ):
     slug = make_unique_slug(product_data.name, db)
     data = product_data.model_dump(exclude={"category_ids", "variant_groups"})
+    data["product_type"] = _infer_product_type(product_data.product_type, product_data.variant_groups)
     product = Product(**data, slug=slug)
     db.add(product)
     db.flush()
@@ -180,6 +192,10 @@ def update_product(
     data = update_data.model_dump(exclude_unset=True, exclude={"category_ids", "variant_groups"})
     if "name" in data:
         product.slug = make_unique_slug(data["name"], db, exclude_id=product_id)
+    if update_data.variant_groups is not None:
+        data["product_type"] = _infer_product_type(update_data.product_type, update_data.variant_groups)
+    elif update_data.product_type == ProductType.custom:
+        data["product_type"] = ProductType.custom
     for field, value in data.items():
         setattr(product, field, value)
 
@@ -244,48 +260,4 @@ def delete_product_image(
     if not img:
         raise HTTPException(status_code=404, detail="Image not found")
     db.delete(img)
-    db.commit()
-
-
-# ── Videos ───────────────────────────────────────────────────────────────────
-
-@router.post("/{product_id}/videos", response_model=ProductVideoResponse)
-async def upload_product_video(
-    product_id: int,
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    admin=Depends(get_current_admin),
-):
-    product = db.query(Product).filter(Product.id == product_id).first()
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-
-    video_url = await save_upload(
-        file,
-        folder="product_videos",
-        allowed_types=VIDEO_ALLOWED_TYPES,
-        max_size=settings.MAX_VIDEO_FILE_SIZE,
-        validate_image=False,
-    )
-    sort_order = db.query(ProductVideo).filter(ProductVideo.product_id == product_id).count()
-    vid = ProductVideo(product_id=product_id, video_url=video_url, sort_order=sort_order)
-    db.add(vid)
-    db.commit()
-    db.refresh(vid)
-    return vid
-
-
-@router.delete("/{product_id}/videos/{video_id}", status_code=204)
-def delete_product_video(
-    product_id: int,
-    video_id: int,
-    db: Session = Depends(get_db),
-    admin=Depends(get_current_admin),
-):
-    vid = db.query(ProductVideo).filter(
-        ProductVideo.id == video_id, ProductVideo.product_id == product_id
-    ).first()
-    if not vid:
-        raise HTTPException(status_code=404, detail="Video not found")
-    db.delete(vid)
     db.commit()

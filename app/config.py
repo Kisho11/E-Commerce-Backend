@@ -36,9 +36,6 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "uploads"
     MAX_FILE_SIZE: int = 5 * 1024 * 1024  # 5MB
 
-    # reCAPTCHA
-    RECAPTCHA_SECRET_KEY: str = ""
-
     # CORS
     ALLOWED_ORIGINS: List[str] = [
         "http://localhost:3000",

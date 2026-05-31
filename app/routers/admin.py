@@ -1,5 +1,6 @@
 import secrets
 import string
+from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -12,8 +13,10 @@ from app.models.inventory import Inventory
 from app.models.review import Review
 from app.schemas.user import UserResponse, ManagerCreate, ManagerUpdate, ManagerResponse
 from app.core.dependencies import get_current_admin
-from app.core.security import hash_password
+from app.core.security import hash_password, create_access_token
 from app.core.audit import log_admin_action
+from app.config import settings
+from app.utils.email import send_manager_invite_email
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -125,14 +128,18 @@ def create_manager(body: ManagerCreate, db: Session = Depends(get_db), admin=Dep
     normalized_email = body.email.lower()
     if db.query(User).filter(User.email == normalized_email).first():
         raise HTTPException(status_code=409, detail="Email already registered")
-    alphabet = string.ascii_letters + string.digits
-    password = body.password or "".join(secrets.choice(alphabet) for _ in range(12))
+
+    alphabet = string.ascii_letters + string.digits + string.punctuation
+    temp_password = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(14))
+
     user = User(
         email=normalized_email,
         full_name=body.full_name,
         phone=body.phone,
         role=UserRole.manager,
-        hashed_password=hash_password(password),
+        hashed_password=hash_password(temp_password),
+        must_reset_password=True,
+        is_email_verified=True,
     )
     db.add(user)
     db.flush()
@@ -145,6 +152,16 @@ def create_manager(body: ManagerCreate, db: Session = Depends(get_db), admin=Dep
     )
     db.commit()
     db.refresh(user)
+
+    try:
+        invite_token = create_access_token(
+            {"sub": str(user.id), "purpose": "manager_invite"},
+            expires_delta=timedelta(hours=settings.MANAGER_INVITE_TOKEN_EXPIRE_HOURS),
+        )
+        send_manager_invite_email(user.email, user.full_name, temp_password, invite_token)
+    except Exception as e:
+        print(f"[INVITE EMAIL ERROR] {type(e).__name__}: {e}")
+
     return {
         "id": user.id,
         "email": user.email,
@@ -152,8 +169,10 @@ def create_manager(body: ManagerCreate, db: Session = Depends(get_db), admin=Dep
         "phone": user.phone,
         "role": user.role,
         "is_active": user.is_active,
+        "is_email_verified": user.is_email_verified,
+        "must_reset_password": user.must_reset_password,
         "created_at": user.created_at,
-        "temporary_password": password,
+        "temporary_password": temp_password,
     }
 
 
@@ -199,6 +218,7 @@ def delete_manager(manager_id: int, db: Session = Depends(get_db), admin=Depends
         target_user_id=manager.id,
         details=f"Deleted manager {manager.email}",
     )
+    db.flush()
     db.delete(manager)
     db.commit()
 

@@ -21,6 +21,7 @@ from app.schemas.user import (
     ForgotPasswordRequest,
     ResetPasswordRequest,
     PasswordResetResponse,
+    SetPasswordRequest,
 )
 from app.core.security import (
     hash_password,
@@ -34,7 +35,7 @@ from app.core.security import (
 )
 from app.core.dependencies import get_current_user
 from app.core.rate_limit import auth_rate_limiter, get_request_identifier
-from app.utils.email import send_verification_email
+from app.utils.email import send_verification_email, send_manager_invite_email
 
 
 class GoogleAuthRequest(BaseModel):
@@ -200,6 +201,59 @@ def resend_verification(db: Session = Depends(get_db), current_user=Depends(get_
         raise HTTPException(status_code=500, detail="Failed to send verification email")
 
     return {"message": "Verification email sent"}
+
+
+@router.get("/manager-activate", response_model=Token)
+def manager_activate(token: str, response: Response, db: Session = Depends(get_db)):
+    try:
+        payload = decode_token(token)
+    except (JWTError, Exception):
+        raise HTTPException(status_code=400, detail="Invalid or expired activation link")
+
+    if payload.get("purpose") != "manager_invite":
+        raise HTTPException(status_code=400, detail="Invalid activation token")
+
+    user = db.query(User).filter(User.id == int(payload.get("sub"))).first()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=404, detail="Manager account not found or inactive")
+
+    user.last_login_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(user)
+
+    access_token = create_access_token({"sub": str(user.id), "rv": user.token_version})
+    refresh_token_val = create_refresh_token({"sub": str(user.id), "rv": user.token_version})
+    csrf_token = generate_csrf_token()
+    response.set_cookie(value=access_token, **cookie_settings())
+    response.set_cookie(value=refresh_token_val, **cookie_settings(refresh=True))
+    response.set_cookie(value=csrf_token, **csrf_cookie_settings())
+
+    return {"token_type": "bearer", "user": user}
+
+
+@router.post("/set-password", response_model=PasswordResetResponse)
+def set_password(
+    body: SetPasswordRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    if not current_user.must_reset_password:
+        raise HTTPException(status_code=400, detail="Password reset is not required for this account")
+
+    current_user.hashed_password = hash_password(body.new_password)
+    current_user.must_reset_password = False
+    current_user.token_version += 1
+    db.commit()
+
+    new_access_token = create_access_token({"sub": str(current_user.id), "rv": current_user.token_version})
+    new_refresh_token = create_refresh_token({"sub": str(current_user.id), "rv": current_user.token_version})
+    new_csrf_token = generate_csrf_token()
+    response.set_cookie(value=new_access_token, **cookie_settings())
+    response.set_cookie(value=new_refresh_token, **cookie_settings(refresh=True))
+    response.set_cookie(value=new_csrf_token, **csrf_cookie_settings())
+
+    return {"message": "Password updated successfully"}
 
 
 @router.post("/login", response_model=Token)

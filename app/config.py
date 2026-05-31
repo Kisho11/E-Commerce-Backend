@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     EMAIL_FROM_NAME: str = "Elmshelf Store"
     FRONTEND_URL: str = "http://localhost:3000"
     EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24
+    MANAGER_INVITE_TOKEN_EXPIRE_HOURS: int = 72
 
     # File Upload
     UPLOAD_DIR: str = "uploads"

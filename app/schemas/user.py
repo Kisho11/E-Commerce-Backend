@@ -24,6 +24,7 @@ class UserResponse(UserBase):
     role: UserRole
     is_active: bool
     is_email_verified: bool
+    must_reset_password: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -33,7 +34,6 @@ class ManagerCreate(BaseModel):
     email: EmailStr
     full_name: str = Field(..., min_length=1, max_length=100)
     phone: Optional[str] = None
-    password: Optional[str] = Field(None, min_length=8, max_length=128)  # if omitted, a temp password is generated
 
 
 class ManagerUpdate(BaseModel):
@@ -67,3 +67,7 @@ class ResetPasswordRequest(BaseModel):
 class PasswordResetResponse(BaseModel):
     message: str
     reset_token: Optional[str] = None
+
+
+class SetPasswordRequest(BaseModel):
+    new_password: str = Field(..., min_length=8, max_length=128)

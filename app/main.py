@@ -45,6 +45,24 @@ def ensure_runtime_schema_updates():
         if "is_email_verified" not in user_columns:
             with engine.begin() as connection:
                 connection.execute(text("ALTER TABLE users ADD COLUMN is_email_verified BOOLEAN NOT NULL DEFAULT FALSE"))
+        if "must_reset_password" not in user_columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE users ADD COLUMN must_reset_password BOOLEAN NOT NULL DEFAULT FALSE"))
+
+    if "admin_audit_logs" in table_names:
+        with engine.begin() as connection:
+            row = connection.execute(text(
+                "SELECT confdeltype FROM pg_constraint "
+                "WHERE conname = 'admin_audit_logs_target_user_id_fkey'"
+            )).fetchone()
+            if row and row[0] != 'n':
+                connection.execute(text(
+                    "ALTER TABLE admin_audit_logs DROP CONSTRAINT admin_audit_logs_target_user_id_fkey"
+                ))
+                connection.execute(text(
+                    "ALTER TABLE admin_audit_logs ADD CONSTRAINT admin_audit_logs_target_user_id_fkey "
+                    "FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE SET NULL"
+                ))
 
     if "products" not in table_names:
         return

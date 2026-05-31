@@ -12,6 +12,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8, max_length=128)
+    recaptcha_token: Optional[str] = None
 
 
 class UserUpdate(BaseModel):
@@ -23,16 +24,22 @@ class UserResponse(UserBase):
     id: int
     role: UserRole
     is_active: bool
+    is_email_verified: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class RegisterResponse(BaseModel):
+    message: str
+    email_verification_required: bool = True
 
 
 class ManagerCreate(BaseModel):
     email: EmailStr
     full_name: str = Field(..., min_length=1, max_length=100)
     phone: Optional[str] = None
-    password: Optional[str] = Field(None, min_length=8, max_length=128)  # if omitted, a temp password is generated
+    password: Optional[str] = Field(None, min_length=8, max_length=128)
 
 
 class ManagerUpdate(BaseModel):
@@ -50,6 +57,12 @@ class Token(BaseModel):
     user: Optional[UserResponse] = None
 
 
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+    recaptcha_token: Optional[str] = None
+
+
 class RefreshTokenRequest(BaseModel):
     refresh_token: Optional[str] = None
 
@@ -65,3 +78,16 @@ class ResetPasswordRequest(BaseModel):
 
 class PasswordResetResponse(BaseModel):
     message: str
+
+
+class GoogleAuthRequest(BaseModel):
+    id_token: str
+    mode: str = "signin"
+
+
+class EmailVerifyResponse(BaseModel):
+    message: str
+
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr

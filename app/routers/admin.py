@@ -15,6 +15,7 @@ from app.schemas.user import UserResponse, ManagerCreate, ManagerUpdate, Manager
 from app.core.dependencies import get_current_admin
 from app.core.security import hash_password
 from app.core.audit import log_admin_action
+from app.core import email as email_service
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +137,8 @@ def create_manager(body: ManagerCreate, db: Session = Depends(get_db), admin=Dep
         phone=body.phone,
         role=UserRole.manager,
         hashed_password=hash_password(password),
+        is_email_verified=True,
+        auth_provider="password",
     )
     db.add(user)
     db.flush()
@@ -148,9 +151,10 @@ def create_manager(body: ManagerCreate, db: Session = Depends(get_db), admin=Dep
     )
     db.commit()
     db.refresh(user)
-    # Temporary password must be delivered out-of-band (e.g. email). Never return it in the API response.
-    if not body.password:
-        logger.info("Temporary password generated for new manager %s — deliver via email", normalized_email)
+    try:
+        email_service.send_manager_welcome(normalized_email, body.full_name, password)
+    except Exception:
+        logger.exception("Failed to send welcome email to manager %s", normalized_email)
     return user
 
 

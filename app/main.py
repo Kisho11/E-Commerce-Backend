@@ -42,6 +42,15 @@ def ensure_runtime_schema_updates():
         if "last_login_at" not in user_columns:
             with engine.begin() as connection:
                 connection.execute(text("ALTER TABLE users ADD COLUMN last_login_at TIMESTAMP NULL"))
+        if "is_email_verified" not in user_columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE users ADD COLUMN is_email_verified BOOLEAN NOT NULL DEFAULT FALSE"))
+        if "email_verification_token" not in user_columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE users ADD COLUMN email_verification_token TEXT NULL"))
+        if "auth_provider" not in user_columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE users ADD COLUMN auth_provider VARCHAR NOT NULL DEFAULT 'password'"))
 
     if "products" not in table_names:
         return
@@ -81,6 +90,8 @@ CSRF_EXEMPT_PATHS = {
     "/api/v1/auth/register",
     "/api/v1/auth/forgot-password",
     "/api/v1/auth/reset-password",
+    "/api/v1/auth/google",
+    "/api/v1/auth/resend-verification",
     "/api/v1/payments/webhook",
 }
 

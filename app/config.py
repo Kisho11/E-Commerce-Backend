@@ -26,6 +26,20 @@ class Settings(BaseSettings):
     COOKIE_SAMESITE: str = "lax"
     COOKIE_SECURE: bool = False
 
+    # Email (Gmail SMTP)
+    GMAIL_USER: str = ""
+    GMAIL_APP_PASSWORD: str = ""
+    EMAIL_FROM_NAME: str = "Elamshelf Store"
+    FRONTEND_URL: str = "http://localhost:3000"
+    EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24
+
+    # reCAPTCHA v2
+    RECAPTCHA_SECRET_KEY: str = ""
+    RECAPTCHA_ENABLED: bool = True
+
+    # Google OAuth
+    GOOGLE_CLIENT_ID: str = ""
+
     # Stripe
     STRIPE_SECRET_KEY: str = "sk_test_placeholder"
     STRIPE_WEBHOOK_SECRET: str = ""

@@ -23,6 +23,7 @@ class UserResponse(UserBase):
     id: int
     role: UserRole
     is_active: bool
+    is_email_verified: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}

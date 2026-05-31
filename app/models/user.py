@@ -20,6 +20,7 @@ class User(Base):
     phone = Column(String, nullable=True)
     role = Column(Enum(UserRole), default=UserRole.user, nullable=False)
     is_active = Column(Boolean, default=True)
+    is_email_verified = Column(Boolean, default=False, server_default="false", nullable=False)
     token_version = Column(Integer, default=0, nullable=False)
     failed_login_attempts = Column(Integer, default=0, nullable=False)
     lockout_until = Column(DateTime(timezone=True), nullable=True)

@@ -28,6 +28,7 @@ from app.core.security import (
 )
 from app.core.dependencies import get_current_user
 from app.core.rate_limit import auth_rate_limiter, get_request_identifier
+from app.utils.email import send_verification_email
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 MIN_PASSWORD_LENGTH = 8
@@ -79,7 +80,56 @@ def register(request: Request, user_data: UserCreate, db: Session = Depends(get_
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    try:
+        token = create_access_token(
+            {"sub": str(user.id), "purpose": "email_verification"},
+            expires_delta=timedelta(hours=settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS),
+        )
+        send_verification_email(user.email, user.full_name, token)
+    except Exception:
+        pass
+
     return user
+
+
+@router.get("/verify-email", tags=["Authentication"])
+def verify_email(token: str, db: Session = Depends(get_db)):
+    try:
+        payload = decode_token(token)
+    except (JWTError, Exception):
+        raise HTTPException(status_code=400, detail="Invalid or expired verification link")
+
+    if payload.get("purpose") != "email_verification":
+        raise HTTPException(status_code=400, detail="Invalid verification token")
+
+    user = db.query(User).filter(User.id == int(payload.get("sub"))).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.is_email_verified:
+        return {"message": "Email already verified", "already_verified": True}
+
+    user.is_email_verified = True
+    db.commit()
+    return {"message": "Email verified successfully", "already_verified": False}
+
+
+@router.post("/resend-verification", tags=["Authentication"])
+def resend_verification(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user.is_email_verified:
+        raise HTTPException(status_code=400, detail="Email is already verified")
+
+    try:
+        token = create_access_token(
+            {"sub": str(current_user.id), "purpose": "email_verification"},
+            expires_delta=timedelta(hours=settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS),
+        )
+        send_verification_email(current_user.email, current_user.full_name, token)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to send verification email")
+
+    return {"message": "Verification email sent"}
 
 
 @router.post("/login", response_model=Token)

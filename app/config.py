@@ -12,7 +12,6 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str = "postgresql://postgres:password@localhost:5432/furniture_store"
-    DEV_DATABASE_FALLBACK_URL: str = "sqlite:///./dev.db"
 
     # JWT
     SECRET_KEY: str = "change-this-secret-key-in-production"
@@ -31,6 +30,13 @@ class Settings(BaseSettings):
     # Stripe
     STRIPE_SECRET_KEY: str = "sk_test_placeholder"
     STRIPE_WEBHOOK_SECRET: str = ""
+
+    # Email
+    GMAIL_USER: str = ""
+    GMAIL_APP_PASSWORD: str = ""
+    EMAIL_FROM_NAME: str = "Elmshelf Store"
+    FRONTEND_URL: str = "http://localhost:3000"
+    EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24
 
     # File Upload
     UPLOAD_DIR: str = "uploads"

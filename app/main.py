@@ -42,6 +42,9 @@ def ensure_runtime_schema_updates():
         if "last_login_at" not in user_columns:
             with engine.begin() as connection:
                 connection.execute(text("ALTER TABLE users ADD COLUMN last_login_at TIMESTAMP NULL"))
+        if "is_email_verified" not in user_columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE users ADD COLUMN is_email_verified BOOLEAN NOT NULL DEFAULT FALSE"))
 
     if "products" not in table_names:
         return

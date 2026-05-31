@@ -1,8 +1,14 @@
+import json
+import secrets as _secrets
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi import Form
 from jose import JWTError
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
@@ -29,6 +35,22 @@ from app.core.security import (
 from app.core.dependencies import get_current_user
 from app.core.rate_limit import auth_rate_limiter, get_request_identifier
 from app.utils.email import send_verification_email
+
+
+class GoogleAuthRequest(BaseModel):
+    credential: str
+
+
+def _verify_google_token(credential: str, client_id: str) -> dict:
+    url = f"https://oauth2.googleapis.com/tokeninfo?id_token={urllib.parse.quote(credential)}"
+    try:
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            data = json.loads(resp.read())
+    except urllib.error.HTTPError:
+        raise ValueError("Invalid Google token")
+    if data.get("aud") != client_id:
+        raise ValueError("Token audience mismatch")
+    return data
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 MIN_PASSWORD_LENGTH = 8
@@ -91,6 +113,54 @@ def register(request: Request, user_data: UserCreate, db: Session = Depends(get_
         pass
 
     return user
+
+
+@router.post("/google", response_model=Token)
+def google_auth(
+    response: Response,
+    body: GoogleAuthRequest,
+    db: Session = Depends(get_db),
+):
+    if not settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=503, detail="Google authentication is not configured")
+
+    try:
+        profile = _verify_google_token(body.credential, settings.GOOGLE_CLIENT_ID)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid Google credential")
+
+    email = profile.get("email", "").lower().strip()
+    if not email or not profile.get("email_verified"):
+        raise HTTPException(status_code=400, detail="Google account email is missing or unverified")
+
+    user = db.query(User).filter(User.email == email).first()
+
+    if user:
+        if not user.is_active:
+            raise HTTPException(status_code=400, detail="Account is inactive")
+        if not user.is_email_verified:
+            user.is_email_verified = True
+    else:
+        user = User(
+            email=email,
+            hashed_password=hash_password(_secrets.token_hex(32)),
+            full_name=profile.get("name") or email.split("@")[0],
+            is_email_verified=True,
+        )
+        db.add(user)
+
+    user.last_login_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(user)
+
+    access_token = create_access_token({"sub": str(user.id), "rv": user.token_version})
+    refresh_token_val = create_refresh_token({"sub": str(user.id), "rv": user.token_version})
+    csrf_token = generate_csrf_token()
+    response.set_cookie(value=access_token, **cookie_settings())
+    response.set_cookie(value=refresh_token_val, **cookie_settings(refresh=True))
+    response.set_cookie(value=csrf_token, **csrf_cookie_settings())
+
+    return {"token_type": "bearer", "user": user}
 
 
 @router.get("/verify-email", tags=["Authentication"])

@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: str = "sk_test_placeholder"
     STRIPE_WEBHOOK_SECRET: str = ""
 
+    # Google OAuth
+    GOOGLE_CLIENT_ID: str = ""
+
     # Email
     GMAIL_USER: str = ""
     GMAIL_APP_PASSWORD: str = ""

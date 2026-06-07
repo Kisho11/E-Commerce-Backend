@@ -28,7 +28,7 @@ class Product(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     slug = Column(String, unique=True, index=True, nullable=False)
-    description = Column(Text, nullable=True)
+    description = Column(JSON, nullable=True)
     additional_information = Column(JSON, nullable=True, default=dict)
     price = Column(Numeric(10, 2), nullable=False)
     sale_price = Column(Numeric(10, 2), nullable=True)

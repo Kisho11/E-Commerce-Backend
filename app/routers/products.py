@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, cast, String
 from typing import List, Optional
 from slugify import slugify
 from app.database import get_db
@@ -103,7 +103,7 @@ def get_products(
         query = query.filter(
             or_(
                 Product.name.ilike(f"%{search}%"),
-                Product.description.ilike(f"%{search}%"),
+                cast(Product.description, String).ilike(f"%{search}%"),
             )
         )
     if min_price is not None:

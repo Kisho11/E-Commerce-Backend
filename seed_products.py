@@ -45,21 +45,16 @@ def unique_slug(base: str, seen: set) -> str:
 
 
 def parse_price(raw) -> tuple:
-    """Return (min_price: float, max_price: float | None).
-    For single prices: (price, None).
-    For ranges like '£14.30–£28.59': (14.30, 28.59).
-    """
+    """Return (min_price: float, max_price: float | None)."""
     if not raw:
         return None, None
-    s = re.sub(r"[££Â$€,]", "", str(raw)).strip()
+    s = re.sub(r"[££Â$€,]", "", str(raw)).strip()
     if not s or s in ("-", "--", "N/A", "POA", "TBC", "0"):
         return None, None
-    # Range: "14.30 – 28.59" or "14.30 - 28.59"
     m = re.search(r"(\d[\d.]*)\s*[–\-]+\s*(\d[\d.]*)", s)
     if m:
         lo, hi = float(m.group(1)), float(m.group(2))
         return (lo, hi) if lo <= hi else (hi, lo)
-    # Single value
     m = re.search(r"(\d[\d.]*)", s)
     return (float(m.group(1)), None) if m else (None, None)
 
@@ -79,36 +74,79 @@ def split_colours(val: str) -> list:
     return [p for p in parts if p and p not in ("-", "--")]
 
 
+def text_to_html(raw: str | None) -> str | None:
+    """Convert plain text with newlines into TipTap-compatible HTML paragraphs."""
+    if not raw:
+        return None
+    paragraphs = re.split(r"\n{2,}", raw.strip())
+    parts = []
+    for para in paragraphs:
+        para = para.strip()
+        if para:
+            inner = para.replace("\n", "<br>")
+            parts.append(f"<p>{inner}</p>")
+    return "".join(parts) if parts else None
+
+
+def specs_to_html(specs: dict) -> str | None:
+    """Build an HTML bullet list from product spec key-value pairs."""
+    if not specs:
+        return None
+    labels = {
+        "price_range_text": "Price Range",
+        "depth_mm":         "Depth (mm)",
+        "width_mm":         "Width (mm)",
+        "height_mm":        "Height (mm)",
+        "weight_kg":        "Weight (kg)",
+        "finish":           "Finish",
+        "size":             "Size",
+        "cable_tidy":       "Cable Tidy",
+        "model":            "Model",
+        "colour":           "Colour",
+    }
+    items = ""
+    for key, val in specs.items():
+        label = labels.get(key, key.replace("_", " ").title())
+        val_html = str(val).strip().replace("\n", "<br>")
+        items += f"<li><strong>{label}:</strong> {val_html}</li>"
+    return f"<ul>{items}</ul>" if items else None
+
+
 # ── column mapping ────────────────────────────────────────────────────────────
 
 SKIP_SHEETS = {"Sheet3"}
 
 COL_ALIAS = {
-    "product name":           "name",
-    "category":               "category",
-    "sub category":           "sub_category",
-    "price range":            "price_range",
-    "colour":                 "colour",
-    "color":                  "colour",
-    "depth(mm)":              "depth_mm",
-    "length(mm)":             "depth_mm",
-    "width(mm)":              "width_mm",
-    "height(mm)":             "height_mm",
-    "weight(kg)":             "weight_kg",
-    "finish":                 "finish",
-    "size":                   "size",
-    "main note":              "main_note",
-    "description":            "description",
-    "key features":           "key_features",
-    "what's included":        "whats_included",
-    "important notes":        "important_notes",
-    "additional information": "additional_info",
-    "additional information ":"additional_info",
+    "product name":            "name",
+    "category":                "category",
+    "sub category":            "sub_category",
+    "price range":             "price_range",
+    "colour":                  "colour",
+    "color":                   "colour",
+    "depth(mm)":               "depth_mm",
+    "length(mm)":              "depth_mm",
+    "width(mm)":               "width_mm",
+    "height(mm)":              "height_mm",
+    "weight(kg)":              "weight_kg",
+    "finish":                  "finish",
+    "size":                    "size",
+    "cable tidy":              "cable_tidy",
+    "cabel tidy":              "cable_tidy",   # tolerate typo in sheet
+    "model":                   "model",
+    "main note":               "main_note",
+    "description":             "description",
+    "key features":            "key_features",
+    "what's included":         "whats_included",
+    "important notes":         "important_notes",
+    "additional information":  "additional_info",
+    "additional information ": "additional_info",
 }
 
 
 def find_header(ws):
-    """Return (header_row_number, canonical_col_map {key: col_index})."""
+    """Return (header_row_number, canonical_col_map {key: col_index}).
+    Scans first 6 rows for a row containing 'product name'.
+    """
     for row_num, row in enumerate(ws.iter_rows(max_row=6), start=1):
         lower = [str(c.value).strip().lower() if c.value else "" for c in row]
         if "product name" in lower:
@@ -133,7 +171,7 @@ def vget(vals: list, col_map: dict, key: str):
 def seed(xlsx_path: str):
     db: Session = SessionLocal()
     try:
-        # 1. Clear existing product & category data (preserve users/orders shell)
+        # 1. Clear existing product & category data
         print("Clearing existing product data...")
         for tbl in [
             "stock_movements",
@@ -157,7 +195,7 @@ def seed(xlsx_path: str):
         wb = openpyxl.load_workbook(xlsx_path, data_only=True)
 
         seen_slugs: set = set()
-        cat_cache: dict = {}   # "parent_id::name" → Category
+        cat_cache: dict = {}
         sku_idx = 1
         total = 0
 
@@ -194,10 +232,10 @@ def seed(xlsx_path: str):
                     continue
 
                 # --- Categories ---
-                cat_name   = vget(vals, col_map, "category") or sheet_name
+                cat_name    = vget(vals, col_map, "category") or sheet_name
                 subcat_name = vget(vals, col_map, "sub_category")
-                parent_cat = get_or_create_cat(cat_name)
-                leaf_cat   = (
+                parent_cat  = get_or_create_cat(cat_name)
+                leaf_cat    = (
                     get_or_create_cat(subcat_name, parent_cat.id)
                     if subcat_name else parent_cat
                 )
@@ -208,36 +246,39 @@ def seed(xlsx_path: str):
                 if min_price is None:
                     min_price = 0.0
 
-                # --- Colour variants ---
-                colour_raw = vget(vals, col_map, "colour")
-                colours = split_colours(colour_raw) if colour_raw else []
+                # --- Colour → variant detection ---
+                colour_raw  = vget(vals, col_map, "colour")
+                colours     = split_colours(colour_raw) if colour_raw else []
                 is_variable = len(colours) > 1
 
-                # --- Description (concat main note + description + key features) ---
-                desc_parts = [
-                    vget(vals, col_map, "main_note"),
-                    vget(vals, col_map, "description"),
-                    vget(vals, col_map, "key_features"),
-                ]
-                full_desc = "\n\n".join(p for p in desc_parts if p) or None
+                # --- Rich-text content fields (plain text → HTML) ---
+                main_note       = text_to_html(vget(vals, col_map, "main_note"))
+                description     = text_to_html(vget(vals, col_map, "description"))
+                key_features    = text_to_html(vget(vals, col_map, "key_features"))
+                whats_included  = text_to_html(vget(vals, col_map, "whats_included"))
+                important_notes = text_to_html(vget(vals, col_map, "important_notes"))
 
-                # --- additional_information JSON ---
-                add_info: dict = {}
-                # Store original price range text for display
+                # --- Specs → HTML list for additional_information ---
+                specs: dict = {}
                 if price_raw and max_price is not None:
-                    add_info["price_range_text"] = price_raw
-                # Physical specs
-                for fld in ["depth_mm", "width_mm", "height_mm", "weight_kg", "finish", "size"]:
+                    specs["price_range_text"] = price_raw
+                for fld in [
+                    "depth_mm", "width_mm", "height_mm", "weight_kg",
+                    "finish", "size", "cable_tidy", "model",
+                ]:
                     v = vget(vals, col_map, fld)
                     if v:
-                        add_info[fld] = v
-                # Extra text fields
-                for fld in ["whats_included", "important_notes", "additional_info"]:
-                    v = vget(vals, col_map, fld)
-                    if v:
-                        add_info[fld] = v
+                        specs[fld] = v
                 if colour_raw:
-                    add_info["colour"] = colour_raw
+                    specs["colour"] = colour_raw
+
+                specs_html     = specs_to_html(specs)
+                add_info_html  = text_to_html(vget(vals, col_map, "additional_info"))
+
+                if specs_html and add_info_html:
+                    additional_information = specs_html + add_info_html
+                else:
+                    additional_information = specs_html or add_info_html
 
                 # --- Slug & SKU ---
                 slug = unique_slug(slugify(name), seen_slugs)
@@ -248,8 +289,12 @@ def seed(xlsx_path: str):
                 product = Product(
                     name=name,
                     slug=slug,
-                    description=full_desc,
-                    additional_information=add_info if add_info else None,
+                    description=description,
+                    main_note=main_note,
+                    key_features=key_features,
+                    whats_included=whats_included,
+                    important_notes=important_notes,
+                    additional_information=additional_information,
                     price=min_price,
                     sale_price=max_price,
                     stock_quantity=0,
@@ -262,7 +307,6 @@ def seed(xlsx_path: str):
                 db.flush()
 
                 product.categories.append(leaf_cat)
-                # Also attach the parent so UI category-level filtering works
                 if subcat_name and leaf_cat.id != parent_cat.id:
                     product.categories.append(parent_cat)
                 db.add(Inventory(product_id=product.id, on_hand=0, reserved=0))
@@ -283,7 +327,6 @@ def seed(xlsx_path: str):
                 sheet_count += 1
                 total += 1
 
-                # Commit every 100 products to avoid large transactions
                 if total % 100 == 0:
                     db.commit()
                     print(f"    {total} products committed...")

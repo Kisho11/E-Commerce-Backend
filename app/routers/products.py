@@ -84,7 +84,7 @@ def _infer_product_type(explicit_type: Optional[ProductType], variant_groups_dat
 @router.get("/", response_model=ProductListResponse)
 def get_products(
     page: int = Query(1, ge=1),
-    per_page: int = Query(12, ge=1, le=100),
+    per_page: int = Query(12, ge=1, le=2000),
     category_id: Optional[int] = None,
     search: Optional[str] = None,
     min_price: Optional[float] = None,

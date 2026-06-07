@@ -13,7 +13,7 @@ from app.models.user import User, UserRole
 import app.models  # noqa: F401
 
 
-DEFAULT_EMAIL = "admin@elamshelf.com"
+DEFAULT_EMAIL = "admin@elmshelf.com"
 DEFAULT_PASSWORD = "Admin@12345"
 DEFAULT_NAME = "System Administrator"
 

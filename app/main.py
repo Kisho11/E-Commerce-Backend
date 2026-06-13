@@ -7,7 +7,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect, text
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from app.config import settings
 from app.database import engine, Base
 
@@ -49,7 +49,7 @@ def ensure_runtime_schema_updates():
             with engine.begin() as connection:
                 connection.execute(text("ALTER TABLE users ADD COLUMN must_reset_password BOOLEAN NOT NULL DEFAULT FALSE"))
 
-    if "admin_audit_logs" in table_names and engine.dialect.name == "postgresql":
+    if "admin_audit_logs" in table_names:
         with engine.begin() as connection:
             row = connection.execute(text(
                 "SELECT confdeltype FROM pg_constraint "
@@ -80,8 +80,8 @@ def ensure_runtime_schema_updates():
             try:
                 with engine.begin() as connection:
                     connection.execute(text(f"ALTER TABLE products ADD COLUMN {col_name} {col_type}"))
-            except OperationalError as error:
-                if "duplicate column name" not in str(error).lower():
+            except (OperationalError, ProgrammingError) as error:
+                if "already exists" not in str(error).lower():
                     raise
 
 

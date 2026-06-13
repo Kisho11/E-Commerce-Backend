@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, cast, String
 from typing import List, Optional
 from slugify import slugify
 from app.config import settings
@@ -85,7 +85,7 @@ def _infer_product_type(explicit_type: Optional[ProductType], variant_groups_dat
 @router.get("/", response_model=ProductListResponse)
 def get_products(
     page: int = Query(1, ge=1),
-    per_page: int = Query(12, ge=1, le=100),
+    per_page: int = Query(12, ge=1, le=2000),
     category_id: Optional[int] = None,
     search: Optional[str] = None,
     min_price: Optional[float] = None,
@@ -104,7 +104,7 @@ def get_products(
         query = query.filter(
             or_(
                 Product.name.ilike(f"%{search}%"),
-                Product.description.ilike(f"%{search}%"),
+                cast(Product.description, String).ilike(f"%{search}%"),
             )
         )
     if min_price is not None:

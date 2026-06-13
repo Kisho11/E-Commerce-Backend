@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 from pydantic import BaseModel
 from app.models.product import ProductType
 
@@ -58,7 +58,11 @@ class CategorySlim(BaseModel):
 class ProductBase(BaseModel):
     name: str
     description: Optional[str] = None
-    additional_information: Optional[Dict[str, Any]] = None
+    main_note: Optional[str] = None
+    key_features: Optional[str] = None
+    whats_included: Optional[str] = None
+    important_notes: Optional[str] = None
+    additional_information: Optional[str] = None
     price: Decimal
     sale_price: Optional[Decimal] = None
     stock_quantity: int = 0
@@ -78,7 +82,11 @@ class ProductCreate(ProductBase):
 class ProductUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
-    additional_information: Optional[Dict[str, Any]] = None
+    main_note: Optional[str] = None
+    key_features: Optional[str] = None
+    whats_included: Optional[str] = None
+    important_notes: Optional[str] = None
+    additional_information: Optional[str] = None
     price: Optional[Decimal] = None
     sale_price: Optional[Decimal] = None
     stock_quantity: Optional[int] = None

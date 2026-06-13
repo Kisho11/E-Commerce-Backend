@@ -49,7 +49,7 @@ def ensure_runtime_schema_updates():
             with engine.begin() as connection:
                 connection.execute(text("ALTER TABLE users ADD COLUMN must_reset_password BOOLEAN NOT NULL DEFAULT FALSE"))
 
-    if "admin_audit_logs" in table_names:
+    if "admin_audit_logs" in table_names and engine.dialect.name == "postgresql":
         with engine.begin() as connection:
             row = connection.execute(text(
                 "SELECT confdeltype FROM pg_constraint "

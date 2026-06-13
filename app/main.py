@@ -68,9 +68,21 @@ def ensure_runtime_schema_updates():
         return
 
     product_columns = {column["name"] for column in inspector.get_columns("products")}
-    if "additional_information" not in product_columns:
-        with engine.begin() as connection:
-            connection.execute(text("ALTER TABLE products ADD COLUMN additional_information JSON"))
+    text_cols = {
+        "main_note": "TEXT",
+        "key_features": "TEXT",
+        "whats_included": "TEXT",
+        "important_notes": "TEXT",
+        "additional_information": "TEXT",
+    }
+    for col_name, col_type in text_cols.items():
+        if col_name not in product_columns:
+            try:
+                with engine.begin() as connection:
+                    connection.execute(text(f"ALTER TABLE products ADD COLUMN {col_name} {col_type}"))
+            except OperationalError as error:
+                if "duplicate column name" not in str(error).lower():
+                    raise
 
 
 ensure_runtime_schema_updates()

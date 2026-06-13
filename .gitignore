@@ -10,15 +10,13 @@ build/
 .eggs/
 
 # Virtual environment
-venv/
-venv39/
+venv*/
 .venv/
 env/
 .env/
 
 # Environment variables
-.env
-.env.*
+.env*
 !.env.example
 
 # Database
@@ -28,7 +26,7 @@ env/
 # Uploads
 uploads/
 
-# IDE
+# Editor / IDE
 .vscode/
 .idea/
 *.iml
@@ -46,5 +44,6 @@ logs/
 .coverage
 htmlcov/
 
-# MyPy
+# Type checking
 .mypy_cache/
+.ruff_cache/

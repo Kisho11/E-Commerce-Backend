@@ -1,6 +1,7 @@
 import logging
 import secrets
 import string
+from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -129,8 +130,10 @@ def create_manager(body: ManagerCreate, db: Session = Depends(get_db), admin=Dep
     normalized_email = body.email.lower()
     if db.query(User).filter(User.email == normalized_email).first():
         raise HTTPException(status_code=409, detail="Email already registered")
-    alphabet = string.ascii_letters + string.digits
-    password = body.password or "".join(secrets.choice(alphabet) for _ in range(12))
+
+    alphabet = string.ascii_letters + string.digits + string.punctuation
+    temp_password = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(14))
+
     user = User(
         email=normalized_email,
         full_name=body.full_name,

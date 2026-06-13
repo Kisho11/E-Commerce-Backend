@@ -44,6 +44,17 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: str = "sk_test_placeholder"
     STRIPE_WEBHOOK_SECRET: str = ""
 
+    # Google OAuth
+    GOOGLE_CLIENT_ID: str = ""
+
+    # Email
+    GMAIL_USER: str = ""
+    GMAIL_APP_PASSWORD: str = ""
+    EMAIL_FROM_NAME: str = "Elmshelf Store"
+    FRONTEND_URL: str = "http://localhost:3000"
+    EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24
+    MANAGER_INVITE_TOKEN_EXPIRE_HOURS: int = 72
+
     # File Upload
     UPLOAD_DIR: str = "uploads"
     MAX_FILE_SIZE: int = 5 * 1024 * 1024  # 5MB

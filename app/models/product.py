@@ -37,6 +37,8 @@ class Product(Base):
     product_type = Column(Enum(ProductType), default=ProductType.simple, nullable=False)
     # JSON list of industry strings e.g. ["Restaurant", "Hotel"]
     industries = Column(JSON, nullable=True, default=list)
+    # JSON list of {attributes: {Color: "Blue"}, imageUrl: "..."} mappings
+    variant_images = Column(JSON, nullable=True, default=list)
     is_active = Column(Boolean, default=True)
     is_featured = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -44,7 +46,6 @@ class Product(Base):
 
     categories = relationship("Category", secondary=product_categories, back_populates="products")
     images = relationship("ProductImage", back_populates="product", cascade="all, delete-orphan", order_by="ProductImage.sort_order")
-    videos = relationship("ProductVideo", back_populates="product", cascade="all, delete-orphan", order_by="ProductVideo.sort_order")
     variant_groups = relationship("ProductVariantGroup", back_populates="product", cascade="all, delete-orphan")
     cart_items = relationship("CartItem", back_populates="product")
     order_items = relationship("OrderItem", back_populates="product")
@@ -62,18 +63,6 @@ class ProductImage(Base):
     sort_order = Column(Integer, default=0)
 
     product = relationship("Product", back_populates="images")
-
-
-class ProductVideo(Base):
-    __tablename__ = "product_videos"
-
-    id = Column(Integer, primary_key=True, index=True)
-    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
-    video_url = Column(String, nullable=False)
-    sort_order = Column(Integer, default=0)
-
-    product = relationship("Product", back_populates="videos")
-
 
 class ProductVariantGroup(Base):
     __tablename__ = "product_variant_groups"

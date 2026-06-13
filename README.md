@@ -118,6 +118,9 @@ psql -U postgres -c "CREATE DATABASE furniture_store;"
 
 ```bash
 uvicorn app.main:app --reload
+
+venv\Scripts\python.exe -m uvicorn app.main:app --reload
+
 ```
 
 The API will be available at **http://localhost:8000**.

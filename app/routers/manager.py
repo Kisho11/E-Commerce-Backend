@@ -1,12 +1,14 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+from typing import List, Optional
 from app.database import get_db
 from app.models.order import Order, OrderStatus
 from app.models.product import Product
 from app.models.inventory import Inventory
 from app.models.review import Review
 from app.core.dependencies import get_current_manager
+from app.schemas.order import OrderResponse
 
 router = APIRouter(prefix="/manager", tags=["Manager"])
 
@@ -32,3 +34,22 @@ def manager_dashboard(db: Session = Depends(get_db), user=Depends(get_current_ma
         "low_stock_count": low_stock_count,
         "pending_reviews": pending_reviews,
     }
+
+
+@router.get("/orders", response_model=List[OrderResponse])
+def manager_get_orders(
+    status: Optional[OrderStatus] = None,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_manager),
+):
+    query = db.query(Order)
+    if status:
+        query = query.filter(Order.status == status)
+    return (
+        query.order_by(Order.created_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )

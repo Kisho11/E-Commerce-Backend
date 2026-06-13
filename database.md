@@ -99,11 +99,10 @@ Swagger UI: `http://localhost:8000/docs`
 
 ## 5. Bootstrap the First Admin User
 
-There is no seeded admin on a fresh database. Register a user via the API, then
-promote it directly in psql:
+Create or reset the local admin directly with the bootstrap script:
 
 ```bash
-psql -U postgres -d furniture_store
+python scripts/create_admin.py
 ```
 
 ```sql
@@ -112,7 +111,13 @@ UPDATE users SET role = 'admin' WHERE email = 'dorington1996@gmail.com';
 \q
 ```
 
-That user can now log in and use all `/api/v1/admin/*` endpoints.
+You can also override the defaults:
+
+```bash
+python scripts/create_admin.py --email admin@example.com --password 'StrongPass123!'
+```
+
+That account can then log in and use all `/api/v1/admin/*` endpoints.
 
 ---
 
@@ -146,7 +151,6 @@ WHERE email = 'manager@elamshelf.com';
 | `products` | Product catalogue |
 | `product_categories` | Many-to-many: products ↔ categories |
 | `product_images` | Product image gallery |
-| `product_videos` | Product video gallery |
 | `product_variant_groups` | Variant attribute groups (e.g. Color) |
 | `product_variants` | Individual variant options (e.g. Red, Blue) |
 | `inventory` | Per-product stock record |

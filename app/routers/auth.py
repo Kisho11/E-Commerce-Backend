@@ -161,6 +161,146 @@ def resend_verification(
 
 # ── Login ─────────────────────────────────────────────────────────────────────
 
+@router.post("/google", response_model=Token)
+def google_auth(
+    response: Response,
+    body: GoogleAuthRequest,
+    db: Session = Depends(get_db),
+):
+    if not settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=503, detail="Google authentication is not configured")
+
+    try:
+        profile = _verify_google_token(body.credential, settings.GOOGLE_CLIENT_ID)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid Google credential")
+
+    email = profile.get("email", "").lower().strip()
+    if not email or not profile.get("email_verified"):
+        raise HTTPException(status_code=400, detail="Google account email is missing or unverified")
+
+    user = db.query(User).filter(User.email == email).first()
+
+    if user:
+        if not user.is_active:
+            raise HTTPException(status_code=400, detail="Account is inactive")
+        if not user.is_email_verified:
+            user.is_email_verified = True
+    else:
+        user = User(
+            email=email,
+            hashed_password=hash_password(_secrets.token_hex(32)),
+            full_name=profile.get("name") or email.split("@")[0],
+            is_email_verified=True,
+        )
+        db.add(user)
+
+    user.last_login_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(user)
+
+    access_token = create_access_token({"sub": str(user.id), "rv": user.token_version})
+    refresh_token_val = create_refresh_token({"sub": str(user.id), "rv": user.token_version})
+    csrf_token = generate_csrf_token()
+    response.set_cookie(value=access_token, **cookie_settings())
+    response.set_cookie(value=refresh_token_val, **cookie_settings(refresh=True))
+    response.set_cookie(value=csrf_token, **csrf_cookie_settings())
+
+    return {"token_type": "bearer", "user": user}
+
+
+@router.get("/verify-email", tags=["Authentication"])
+def verify_email(token: str, db: Session = Depends(get_db)):
+    try:
+        payload = decode_token(token)
+    except (JWTError, Exception):
+        raise HTTPException(status_code=400, detail="Invalid or expired verification link")
+
+    if payload.get("purpose") != "email_verification":
+        raise HTTPException(status_code=400, detail="Invalid verification token")
+
+    user = db.query(User).filter(User.id == int(payload.get("sub"))).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.is_email_verified:
+        return {"message": "Email already verified", "already_verified": True}
+
+    user.is_email_verified = True
+    db.commit()
+    return {"message": "Email verified successfully", "already_verified": False}
+
+
+@router.post("/resend-verification", tags=["Authentication"])
+def resend_verification(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    if current_user.is_email_verified:
+        raise HTTPException(status_code=400, detail="Email is already verified")
+
+    try:
+        token = create_access_token(
+            {"sub": str(current_user.id), "purpose": "email_verification"},
+            expires_delta=timedelta(hours=settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS),
+        )
+        send_verification_email(current_user.email, current_user.full_name, token)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to send verification email")
+
+    return {"message": "Verification email sent"}
+
+
+@router.get("/manager-activate", response_model=Token)
+def manager_activate(token: str, response: Response, db: Session = Depends(get_db)):
+    try:
+        payload = decode_token(token)
+    except (JWTError, Exception):
+        raise HTTPException(status_code=400, detail="Invalid or expired activation link")
+
+    if payload.get("purpose") != "manager_invite":
+        raise HTTPException(status_code=400, detail="Invalid activation token")
+
+    user = db.query(User).filter(User.id == int(payload.get("sub"))).first()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=404, detail="Manager account not found or inactive")
+
+    user.last_login_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(user)
+
+    access_token = create_access_token({"sub": str(user.id), "rv": user.token_version})
+    refresh_token_val = create_refresh_token({"sub": str(user.id), "rv": user.token_version})
+    csrf_token = generate_csrf_token()
+    response.set_cookie(value=access_token, **cookie_settings())
+    response.set_cookie(value=refresh_token_val, **cookie_settings(refresh=True))
+    response.set_cookie(value=csrf_token, **csrf_cookie_settings())
+
+    return {"token_type": "bearer", "user": user}
+
+
+@router.post("/set-password", response_model=PasswordResetResponse)
+def set_password(
+    body: SetPasswordRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    if not current_user.must_reset_password:
+        raise HTTPException(status_code=400, detail="Password reset is not required for this account")
+
+    current_user.hashed_password = hash_password(body.new_password)
+    current_user.must_reset_password = False
+    current_user.token_version += 1
+    db.commit()
+
+    new_access_token = create_access_token({"sub": str(current_user.id), "rv": current_user.token_version})
+    new_refresh_token = create_refresh_token({"sub": str(current_user.id), "rv": current_user.token_version})
+    new_csrf_token = generate_csrf_token()
+    response.set_cookie(value=new_access_token, **cookie_settings())
+    response.set_cookie(value=new_refresh_token, **cookie_settings(refresh=True))
+    response.set_cookie(value=new_csrf_token, **csrf_cookie_settings())
+
+    return {"message": "Password updated successfully"}
+
+
 @router.post("/login", response_model=Token)
 def login(
     request: Request,
@@ -189,6 +329,14 @@ def login(
 
     if not user.is_active:
         raise HTTPException(status_code=400, detail="Account is inactive")
+    _clear_login_failures(user, db)
+
+    access_token = create_access_token({"sub": str(user.id), "rv": user.token_version})
+    refresh_token = create_refresh_token({"sub": str(user.id), "rv": user.token_version})
+    csrf_token = generate_csrf_token()
+    response.set_cookie(value=access_token, **cookie_settings())
+    response.set_cookie(value=refresh_token, **cookie_settings(refresh=True))
+    response.set_cookie(value=csrf_token, **csrf_cookie_settings())
 
     if not user.is_email_verified and user.auth_provider == "password":
         raise HTTPException(

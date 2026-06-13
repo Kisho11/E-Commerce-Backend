@@ -5,11 +5,11 @@ from typing import List, Optional
 from slugify import slugify
 from app.config import settings
 from app.database import get_db
-from app.models.product import Product, ProductImage, ProductVideo, ProductVariantGroup, ProductVariant
+from app.models.product import Product, ProductImage, ProductVariantGroup, ProductVariant, ProductType
 from app.models.category import Category
 from app.models.review import Review
 from app.schemas.product import (
-    ProductCreate, ProductUpdate, ProductResponse, ProductListResponse, ProductVideoResponse,
+    ProductCreate, ProductUpdate, ProductResponse, ProductListResponse,
 )
 from app.core.dependencies import get_current_admin
 from app.utils.file_upload import save_upload, VIDEO_ALLOWED_TYPES
@@ -68,6 +68,18 @@ def _set_variant_groups(product: Product, variant_groups_data: list, db: Session
                 sku_suffix=v_data.sku_suffix,
             )
             db.add(v)
+
+
+def _infer_product_type(explicit_type: Optional[ProductType], variant_groups_data: Optional[list]) -> ProductType:
+    if explicit_type == ProductType.custom:
+        return ProductType.custom
+
+    if variant_groups_data:
+        has_variants = any(getattr(group, "variants", None) for group in variant_groups_data)
+        if has_variants:
+            return ProductType.variable
+
+    return ProductType.simple
 
 
 @router.get("/", response_model=ProductListResponse)
@@ -152,6 +164,7 @@ def create_product(
 ):
     slug = make_unique_slug(product_data.name, db)
     data = product_data.model_dump(exclude={"category_ids", "variant_groups"})
+    data["product_type"] = _infer_product_type(product_data.product_type, product_data.variant_groups)
     product = Product(**data, slug=slug)
     db.add(product)
     db.flush()
@@ -181,6 +194,10 @@ def update_product(
     data = update_data.model_dump(exclude_unset=True, exclude={"category_ids", "variant_groups"})
     if "name" in data:
         product.slug = make_unique_slug(data["name"], db, exclude_id=product_id)
+    if update_data.variant_groups is not None:
+        data["product_type"] = _infer_product_type(update_data.product_type, update_data.variant_groups)
+    elif update_data.product_type == ProductType.custom:
+        data["product_type"] = ProductType.custom
     for field, value in data.items():
         setattr(product, field, value)
 

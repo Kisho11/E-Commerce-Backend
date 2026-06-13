@@ -1,7 +1,10 @@
+import re
 import secrets
 import string
+import unicodedata
 from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
@@ -9,6 +12,7 @@ from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.order import Order, OrderStatus, PaymentStatus
 from app.models.product import Product
+from app.models.industry import Industry
 from app.models.inventory import Inventory
 from app.models.review import Review
 from app.schemas.user import UserResponse, ManagerCreate, ManagerUpdate, ManagerResponse
@@ -17,6 +21,12 @@ from app.core.security import hash_password, create_access_token
 from app.core.audit import log_admin_action
 from app.config import settings
 from app.utils.email import send_manager_invite_email
+
+
+def _slugify(s: str) -> str:
+    s = unicodedata.normalize("NFKD", s).lower().strip()
+    s = re.sub(r"[^\w\s-]", "", s, flags=re.ASCII)
+    return re.sub(r"[\s_]+", "-", s).strip("-")
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -394,3 +404,76 @@ def top_categories_report(
         }
         for name, order_count, units_sold, revenue in rows
     ]
+
+
+# ── Industries ────────────────────────────────────────────────────────────────
+
+class IndustryIn(BaseModel):
+    name: str
+    is_active: bool = True
+
+
+@router.get("/industries")
+def list_industries(
+    db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
+):
+    return db.query(Industry).order_by(Industry.name).all()
+
+
+@router.post("/industries", status_code=201)
+def create_industry(body: IndustryIn, db: Session = Depends(get_db), admin=Depends(get_current_admin)):
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Name cannot be empty")
+    if db.query(Industry).filter(func.lower(Industry.name) == name.lower()).first():
+        raise HTTPException(status_code=409, detail="Industry already exists")
+    slug = _slugify(name)
+    if db.query(Industry).filter(Industry.slug == slug).first():
+        slug = f"{slug}-{secrets.token_hex(3)}"
+    industry = Industry(name=name, slug=slug, is_active=body.is_active)
+    db.add(industry)
+    db.commit()
+    db.refresh(industry)
+    return industry
+
+
+@router.put("/industries/{industry_id}")
+def update_industry(
+    industry_id: int,
+    body: IndustryIn,
+    db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
+):
+    industry = db.query(Industry).filter(Industry.id == industry_id).first()
+    if not industry:
+        raise HTTPException(status_code=404, detail="Industry not found")
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Name cannot be empty")
+    conflict = (
+        db.query(Industry)
+        .filter(func.lower(Industry.name) == name.lower(), Industry.id != industry_id)
+        .first()
+    )
+    if conflict:
+        raise HTTPException(status_code=409, detail="Industry name already in use")
+    industry.name = name
+    industry.slug = _slugify(name)
+    industry.is_active = body.is_active
+    db.commit()
+    db.refresh(industry)
+    return industry
+
+
+@router.delete("/industries/{industry_id}", status_code=204)
+def delete_industry(
+    industry_id: int,
+    db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
+):
+    industry = db.query(Industry).filter(Industry.id == industry_id).first()
+    if not industry:
+        raise HTTPException(status_code=404, detail="Industry not found")
+    db.delete(industry)
+    db.commit()

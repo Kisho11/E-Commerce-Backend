@@ -1,4 +1,3 @@
-import logging
 import secrets
 import string
 from datetime import timedelta
@@ -14,11 +13,10 @@ from app.models.inventory import Inventory
 from app.models.review import Review
 from app.schemas.user import UserResponse, ManagerCreate, ManagerUpdate, ManagerResponse
 from app.core.dependencies import get_current_admin
-from app.core.security import hash_password
+from app.core.security import hash_password, create_access_token
 from app.core.audit import log_admin_action
-from app.core import email as email_service
-
-logger = logging.getLogger(__name__)
+from app.config import settings
+from app.utils.email import send_manager_invite_email
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -64,7 +62,7 @@ def get_dashboard(db: Session = Depends(get_db), admin=Depends(get_current_admin
 
 @router.get("/users", response_model=List[UserResponse])
 def get_all_users(
-    page: int = Query(1, ge=1, le=10000),
+    page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin),
@@ -139,9 +137,9 @@ def create_manager(body: ManagerCreate, db: Session = Depends(get_db), admin=Dep
         full_name=body.full_name,
         phone=body.phone,
         role=UserRole.manager,
-        hashed_password=hash_password(password),
+        hashed_password=hash_password(temp_password),
+        must_reset_password=True,
         is_email_verified=True,
-        auth_provider="password",
     )
     db.add(user)
     db.flush()
@@ -154,11 +152,28 @@ def create_manager(body: ManagerCreate, db: Session = Depends(get_db), admin=Dep
     )
     db.commit()
     db.refresh(user)
+
     try:
-        email_service.send_manager_welcome(normalized_email, body.full_name, password)
-    except Exception:
-        logger.exception("Failed to send welcome email to manager %s", normalized_email)
-    return user
+        invite_token = create_access_token(
+            {"sub": str(user.id), "purpose": "manager_invite"},
+            expires_delta=timedelta(hours=settings.MANAGER_INVITE_TOKEN_EXPIRE_HOURS),
+        )
+        send_manager_invite_email(user.email, user.full_name, temp_password, invite_token)
+    except Exception as e:
+        print(f"[INVITE EMAIL ERROR] {type(e).__name__}: {e}")
+
+    return {
+        "id": user.id,
+        "email": user.email,
+        "full_name": user.full_name,
+        "phone": user.phone,
+        "role": user.role,
+        "is_active": user.is_active,
+        "is_email_verified": user.is_email_verified,
+        "must_reset_password": user.must_reset_password,
+        "created_at": user.created_at,
+        "temporary_password": temp_password,
+    }
 
 
 @router.put("/managers/{manager_id}", response_model=UserResponse)
@@ -203,6 +218,7 @@ def delete_manager(manager_id: int, db: Session = Depends(get_db), admin=Depends
         target_user_id=manager.id,
         details=f"Deleted manager {manager.email}",
     )
+    db.flush()
     db.delete(manager)
     db.commit()
 
@@ -211,12 +227,12 @@ def delete_manager(manager_id: int, db: Session = Depends(get_db), admin=Depends
 
 @router.get("/customers")
 def list_customers(
-    page: int = Query(1, ge=1, le=10000),
+    page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     search: Optional[str] = Query(None),
     min_orders: Optional[int] = Query(None, ge=0),
-    sort_by: str = Query("created_at", enum=["name", "email", "created_at"]),
-    sort_dir: str = Query("desc", enum=["asc", "desc"]),
+    sort_by: str = Query("created_at"),
+    sort_dir: str = Query("desc"),
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin),
 ):
@@ -281,13 +297,6 @@ def get_customer_orders(
     user = db.query(User).filter(User.id == customer_id, User.role == UserRole.user).first()
     if not user:
         raise HTTPException(status_code=404, detail="Customer not found")
-    log_admin_action(
-        db,
-        admin_user_id=admin.id,
-        action="view_customer_orders",
-        target_user_id=user.id,
-        details=f"Admin accessed order history for customer {user.email}",
-    )
     orders = (
         db.query(Order)
         .filter(Order.user_id == customer_id)

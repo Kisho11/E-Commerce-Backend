@@ -12,7 +12,6 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8, max_length=128)
-    recaptcha_token: Optional[str] = None
 
 
 class UserUpdate(BaseModel):
@@ -25,21 +24,16 @@ class UserResponse(UserBase):
     role: UserRole
     is_active: bool
     is_email_verified: bool
+    must_reset_password: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}
-
-
-class RegisterResponse(BaseModel):
-    message: str
-    email_verification_required: bool = True
 
 
 class ManagerCreate(BaseModel):
     email: EmailStr
     full_name: str = Field(..., min_length=1, max_length=100)
     phone: Optional[str] = None
-    password: Optional[str] = Field(None, min_length=8, max_length=128)
 
 
 class ManagerUpdate(BaseModel):
@@ -49,18 +43,12 @@ class ManagerUpdate(BaseModel):
 
 
 class ManagerResponse(UserResponse):
-    pass
+    temporary_password: Optional[str] = None
 
 
 class Token(BaseModel):
     token_type: str = "bearer"
     user: Optional[UserResponse] = None
-
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
-    recaptcha_token: Optional[str] = None
 
 
 class RefreshTokenRequest(BaseModel):
@@ -78,16 +66,8 @@ class ResetPasswordRequest(BaseModel):
 
 class PasswordResetResponse(BaseModel):
     message: str
+    reset_token: Optional[str] = None
 
 
-class GoogleAuthRequest(BaseModel):
-    id_token: str
-    mode: str = "signin"
-
-
-class EmailVerifyResponse(BaseModel):
-    message: str
-
-
-class ResendVerificationRequest(BaseModel):
-    email: EmailStr
+class SetPasswordRequest(BaseModel):
+    new_password: str = Field(..., min_length=8, max_length=128)

@@ -11,8 +11,6 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    if not hashed_password or hashed_password.startswith("!"):
-        return False
     try:
         return bcrypt.checkpw(
             plain_password.encode("utf-8"),
@@ -51,23 +49,6 @@ def decode_token(token: str) -> dict:
 
 def generate_csrf_token() -> str:
     return secrets.token_urlsafe(32)
-
-
-def create_email_verification_token(user_id: int) -> str:
-    from app.config import settings as _settings
-    expires = timedelta(hours=_settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS)
-    data = {"sub": str(user_id), "purpose": "email_verification"}
-    to_encode = data.copy()
-    now = datetime.now(timezone.utc)
-    to_encode.update({"exp": now + expires, "iat": now, "nbf": now, "type": "access"})
-    return jwt.encode(to_encode, _settings.SECRET_KEY, algorithm=_settings.ALGORITHM)
-
-
-def decode_email_verification_token(token: str) -> dict:
-    payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-    if payload.get("purpose") != "email_verification":
-        raise JWTError("Invalid token purpose")
-    return payload
 
 
 def cookie_settings(*, refresh: bool = False) -> dict:

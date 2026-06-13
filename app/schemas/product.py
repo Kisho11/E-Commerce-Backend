@@ -69,7 +69,6 @@ class ProductBase(BaseModel):
     sku: Optional[str] = None
     product_type: Optional[ProductType] = None
     industries: Optional[List[str]] = None
-    variant_images: Optional[List[Dict[str, Any]]] = None
     is_active: bool = True
     is_featured: bool = False
 
@@ -93,7 +92,6 @@ class ProductUpdate(BaseModel):
     sku: Optional[str] = None
     product_type: Optional[ProductType] = None
     industries: Optional[List[str]] = None
-    variant_images: Optional[List[Dict[str, Any]]] = None
     category_ids: Optional[List[int]] = None
     is_active: Optional[bool] = None
     is_featured: Optional[bool] = None

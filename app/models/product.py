@@ -41,8 +41,6 @@ class Product(Base):
     product_type = Column(Enum(ProductType), default=ProductType.simple, nullable=False)
     # JSON list of industry strings e.g. ["Restaurant", "Hotel"]
     industries = Column(JSON, nullable=True, default=list)
-    # JSON list of {attributes: {Color: "Blue"}, imageUrl: "..."} mappings
-    variant_images = Column(JSON, nullable=True, default=list)
     is_active = Column(Boolean, default=True)
     is_featured = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

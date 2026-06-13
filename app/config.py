@@ -1,4 +1,6 @@
+import os
 import secrets
+from urllib.parse import urlparse
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 from typing import List
@@ -10,10 +12,9 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str = "postgresql://postgres:password@localhost:5432/furniture_store"
-    DEV_DATABASE_FALLBACK_URL: str = "sqlite:///./dev.db"
 
-    # JWT — must be set via environment variable; no insecure default
-    SECRET_KEY: str = ""
+    # JWT
+    SECRET_KEY: str = "change-this-secret-key-in-production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -25,20 +26,6 @@ class Settings(BaseSettings):
     CSRF_HEADER_NAME: str = "X-CSRF-Token"
     COOKIE_SAMESITE: str = "lax"
     COOKIE_SECURE: bool = False
-
-    # Email (Gmail SMTP)
-    GMAIL_USER: str = ""
-    GMAIL_APP_PASSWORD: str = ""
-    EMAIL_FROM_NAME: str = "Elamshelf Store"
-    FRONTEND_URL: str = "http://localhost:3000"
-    EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24
-
-    # reCAPTCHA v2
-    RECAPTCHA_SECRET_KEY: str = ""
-    RECAPTCHA_ENABLED: bool = True
-
-    # Google OAuth
-    GOOGLE_CLIENT_ID: str = ""
 
     # Stripe
     STRIPE_SECRET_KEY: str = "sk_test_placeholder"
@@ -58,7 +45,6 @@ class Settings(BaseSettings):
     # File Upload
     UPLOAD_DIR: str = "uploads"
     MAX_FILE_SIZE: int = 5 * 1024 * 1024  # 5MB
-    MAX_VIDEO_FILE_SIZE: int = 20 * 1024 * 1024  # 20MB
 
     # CORS
     ALLOWED_ORIGINS: List[str] = [
@@ -69,6 +55,7 @@ class Settings(BaseSettings):
     ]
     TRUSTED_HOSTS: List[str] = ["localhost", "127.0.0.1", "testserver"]
     ENABLE_DOCS: bool = False
+    EXPOSE_PASSWORD_RESET_TOKEN: bool = False
     AUTH_RATE_LIMIT_WINDOW_SECONDS: int = 60
     AUTH_RATE_LIMIT_MAX_REQUESTS: int = 5
     AUTH_LOCKOUT_MAX_ATTEMPTS: int = 5
@@ -103,20 +90,31 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_security_settings(self):
+        raw_debug = os.getenv("APP_DEBUG", os.getenv("DEBUG"))
+        if raw_debug is not None:
+            self.DEBUG = self.parse_debug(raw_debug)
+
         if self.DEBUG:
             if not self.ENABLE_DOCS:
                 self.ENABLE_DOCS = True
 
-        if not self.SECRET_KEY:
+        if not self.SECRET_KEY or self.SECRET_KEY == "replace-with-a-long-random-secret-key":
             if self.DEBUG:
                 self.SECRET_KEY = secrets.token_urlsafe(48)
-            else:
-                raise ValueError("SECRET_KEY must be set via environment variable before running.")
+
+        insecure_default_secret = self.SECRET_KEY == "change-this-secret-key-in-production"
+        if insecure_default_secret and not self.DEBUG:
+            raise ValueError("SECRET_KEY must be changed before running outside DEBUG mode.")
 
         if len(self.SECRET_KEY) < 32 and not self.DEBUG:
-            raise ValueError("SECRET_KEY must be at least 32 characters long.")
+            raise ValueError("SECRET_KEY must be at least 32 characters long outside DEBUG mode.")
 
-        if not self.DEBUG and not self.COOKIE_SECURE:
+        parsed_database_url = urlparse(self.DATABASE_URL)
+        is_local_sqlite = self.DATABASE_URL.startswith("sqlite")
+        is_local_postgres = parsed_database_url.hostname in {"localhost", "127.0.0.1"}
+        is_local_database = is_local_sqlite or is_local_postgres
+
+        if not self.DEBUG and not self.COOKIE_SECURE and not is_local_database:
             self.COOKIE_SECURE = True
 
         return self

@@ -45,12 +45,24 @@ def ensure_runtime_schema_updates():
         if "is_email_verified" not in user_columns:
             with engine.begin() as connection:
                 connection.execute(text("ALTER TABLE users ADD COLUMN is_email_verified BOOLEAN NOT NULL DEFAULT FALSE"))
-        if "email_verification_token" not in user_columns:
+        if "must_reset_password" not in user_columns:
             with engine.begin() as connection:
-                connection.execute(text("ALTER TABLE users ADD COLUMN email_verification_token TEXT NULL"))
-        if "auth_provider" not in user_columns:
-            with engine.begin() as connection:
-                connection.execute(text("ALTER TABLE users ADD COLUMN auth_provider VARCHAR NOT NULL DEFAULT 'password'"))
+                connection.execute(text("ALTER TABLE users ADD COLUMN must_reset_password BOOLEAN NOT NULL DEFAULT FALSE"))
+
+    if "admin_audit_logs" in table_names:
+        with engine.begin() as connection:
+            row = connection.execute(text(
+                "SELECT confdeltype FROM pg_constraint "
+                "WHERE conname = 'admin_audit_logs_target_user_id_fkey'"
+            )).fetchone()
+            if row and row[0] != 'n':
+                connection.execute(text(
+                    "ALTER TABLE admin_audit_logs DROP CONSTRAINT admin_audit_logs_target_user_id_fkey"
+                ))
+                connection.execute(text(
+                    "ALTER TABLE admin_audit_logs ADD CONSTRAINT admin_audit_logs_target_user_id_fkey "
+                    "FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE SET NULL"
+                ))
 
     if "products" not in table_names:
         return
@@ -88,10 +100,9 @@ CSRF_EXEMPT_PATHS = {
     "/health",
     "/api/v1/auth/login",
     "/api/v1/auth/register",
+    "/api/v1/auth/google",
     "/api/v1/auth/forgot-password",
     "/api/v1/auth/reset-password",
-    "/api/v1/auth/google",
-    "/api/v1/auth/resend-verification",
     "/api/v1/payments/webhook",
 }
 

@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, or_, cast, String
 from typing import List, Optional
 from slugify import slugify
-from app.config import settings
 from app.database import get_db
 from app.models.product import Product, ProductImage, ProductVariantGroup, ProductVariant, ProductType
 from app.models.category import Category
@@ -12,7 +11,7 @@ from app.schemas.product import (
     ProductCreate, ProductUpdate, ProductResponse, ProductListResponse,
 )
 from app.core.dependencies import get_current_admin
-from app.utils.file_upload import save_upload, VIDEO_ALLOWED_TYPES
+from app.utils.file_upload import save_upload
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
@@ -117,8 +116,7 @@ def get_products(
         query = query.filter(Product.product_type == product_type)
 
     total = query.count()
-    _SORT_COLS = {"price": Product.price, "created_at": Product.created_at, "name": Product.name}
-    sort_col = _SORT_COLS.get(sort_by, Product.created_at)
+    sort_col = getattr(Product, sort_by)
     query = query.order_by(sort_col.asc() if sort_order == "asc" else sort_col.desc())
     products = query.offset((page - 1) * per_page).limit(per_page).all()
 
@@ -262,48 +260,4 @@ def delete_product_image(
     if not img:
         raise HTTPException(status_code=404, detail="Image not found")
     db.delete(img)
-    db.commit()
-
-
-# ── Videos ───────────────────────────────────────────────────────────────────
-
-@router.post("/{product_id}/videos", response_model=ProductVideoResponse)
-async def upload_product_video(
-    product_id: int,
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    admin=Depends(get_current_admin),
-):
-    product = db.query(Product).filter(Product.id == product_id).first()
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-
-    video_url = await save_upload(
-        file,
-        folder="product_videos",
-        allowed_types=VIDEO_ALLOWED_TYPES,
-        max_size=settings.MAX_VIDEO_FILE_SIZE,
-        validate_image=False,
-    )
-    sort_order = db.query(ProductVideo).filter(ProductVideo.product_id == product_id).count()
-    vid = ProductVideo(product_id=product_id, video_url=video_url, sort_order=sort_order)
-    db.add(vid)
-    db.commit()
-    db.refresh(vid)
-    return vid
-
-
-@router.delete("/{product_id}/videos/{video_id}", status_code=204)
-def delete_product_video(
-    product_id: int,
-    video_id: int,
-    db: Session = Depends(get_db),
-    admin=Depends(get_current_admin),
-):
-    vid = db.query(ProductVideo).filter(
-        ProductVideo.id == video_id, ProductVideo.product_id == product_id
-    ).first()
-    if not vid:
-        raise HTTPException(status_code=404, detail="Video not found")
-    db.delete(vid)
     db.commit()

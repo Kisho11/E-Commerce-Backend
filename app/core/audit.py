@@ -8,7 +8,7 @@ from app.models.user import AdminAuditLog
 def log_admin_action(
     db: Session,
     *,
-    admin_user_id: Optional[int],
+    admin_user_id: int,
     action: str,
     target_user_id: Optional[int] = None,
     details: Optional[str] = None,

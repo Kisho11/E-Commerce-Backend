@@ -63,6 +63,7 @@ class ProductImage(Base):
     image_url = Column(String, nullable=False)
     is_primary = Column(Boolean, default=False)
     sort_order = Column(Integer, default=0)
+    variant_tag = Column(String, nullable=True)
 
     product = relationship("Product", back_populates="images")
 

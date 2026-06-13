@@ -226,6 +226,7 @@ async def upload_product_image(
     product_id: int,
     file: UploadFile = File(...),
     is_primary: bool = False,
+    variant_tag: Optional[str] = None,
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin),
 ):
@@ -239,12 +240,16 @@ async def upload_product_image(
     image_url = await save_upload(file, folder="products")
     sort_order = db.query(ProductImage).filter(ProductImage.product_id == product_id).count()
     img = ProductImage(
-        product_id=product_id, image_url=image_url, is_primary=is_primary, sort_order=sort_order,
+        product_id=product_id,
+        image_url=image_url,
+        is_primary=is_primary,
+        sort_order=sort_order,
+        variant_tag=variant_tag or None,
     )
     db.add(img)
     db.commit()
     db.refresh(img)
-    return {"id": img.id, "image_url": image_url, "is_primary": is_primary, "sort_order": sort_order}
+    return {"id": img.id, "image_url": image_url, "is_primary": is_primary, "sort_order": sort_order, "variant_tag": img.variant_tag}
 
 
 @router.delete("/{product_id}/images/{image_id}", status_code=204)

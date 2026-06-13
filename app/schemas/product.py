@@ -10,6 +10,7 @@ class ProductImageResponse(BaseModel):
     image_url: str
     is_primary: bool
     sort_order: int
+    variant_tag: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

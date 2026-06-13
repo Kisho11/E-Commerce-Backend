@@ -64,6 +64,16 @@ def ensure_runtime_schema_updates():
                     "FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE SET NULL"
                 ))
 
+    if "product_images" in table_names:
+        image_columns = {column["name"] for column in inspector.get_columns("product_images")}
+        if "variant_tag" not in image_columns:
+            try:
+                with engine.begin() as connection:
+                    connection.execute(text("ALTER TABLE product_images ADD COLUMN variant_tag VARCHAR"))
+            except (OperationalError, ProgrammingError) as error:
+                if "already exists" not in str(error).lower():
+                    raise
+
     if "products" not in table_names:
         return
 

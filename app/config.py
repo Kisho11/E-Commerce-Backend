@@ -114,7 +114,8 @@ class Settings(BaseSettings):
         is_local_postgres = parsed_database_url.hostname in {"localhost", "127.0.0.1"}
         is_local_database = is_local_sqlite or is_local_postgres
 
-        if not self.DEBUG and not self.COOKIE_SECURE and not is_local_database:
+        cookie_secure_explicitly_set = os.getenv("COOKIE_SECURE") is not None
+        if not self.DEBUG and not cookie_secure_explicitly_set and not is_local_database:
             self.COOKIE_SECURE = True
 
         return self

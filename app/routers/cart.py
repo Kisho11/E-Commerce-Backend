@@ -102,7 +102,7 @@ def update_cart_item(
     if update_data.quantity <= 0:
         db.delete(item)
     else:
-        if item.product.stock_quantity < update_data.quantity:
+        if item.product.stock_quantity > 0 and item.product.stock_quantity < update_data.quantity:
             raise HTTPException(status_code=400, detail="Insufficient stock")
         item.quantity = update_data.quantity
 

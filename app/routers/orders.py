@@ -62,7 +62,7 @@ def create_order(
             raise HTTPException(
                 status_code=400, detail=f"Product '{product.name}' is no longer available"
             )
-        if product.stock_quantity < item.quantity:
+        if product.stock_quantity > 0 and product.stock_quantity < item.quantity:
             raise HTTPException(
                 status_code=400, detail=f"Insufficient stock for '{product.name}'"
             )

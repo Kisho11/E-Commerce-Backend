@@ -70,7 +70,7 @@ def add_to_cart(
     )
 
     new_qty = (existing.quantity if existing else 0) + item_data.quantity
-    if product.stock_quantity < new_qty:
+    if product.stock_quantity > 0 and product.stock_quantity < new_qty:
         raise HTTPException(status_code=400, detail="Insufficient stock")
 
     if existing:

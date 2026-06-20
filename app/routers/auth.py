@@ -338,7 +338,7 @@ def forgot_password(
         }
 
     reset_token = create_access_token(
-        {"sub": str(user.id), "purpose": "password_reset"},
+        {"sub": str(user.id), "purpose": "password_reset", "rv": user.token_version},
         expires_delta=timedelta(minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES),
     )
     try:
@@ -380,6 +380,9 @@ def reset_password(
     user = db.query(User).filter(User.id == int(payload.get("sub"))).first()
     if not user or not user.is_active:
         raise HTTPException(status_code=404, detail="User not found or inactive")
+
+    if user.token_version != int(payload.get("rv", -1)):
+        raise HTTPException(status_code=401, detail="Invalid or expired reset token")
 
     user.hashed_password = hash_password(body.new_password)
     user.token_version += 1

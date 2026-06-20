@@ -35,7 +35,7 @@ from app.core.security import (
 )
 from app.core.dependencies import get_current_user
 from app.core.rate_limit import auth_rate_limiter, get_request_identifier
-from app.utils.email import send_verification_email, send_manager_invite_email
+from app.utils.email import send_verification_email, send_manager_invite_email, send_password_reset_email
 
 
 class GoogleAuthRequest(BaseModel):
@@ -341,15 +341,19 @@ def forgot_password(
         {"sub": str(user.id), "purpose": "password_reset"},
         expires_delta=timedelta(minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES),
     )
+    try:
+        send_password_reset_email(user.email, user.full_name, reset_token)
+    except Exception:
+        pass
     response = {
-        "message": "If an account exists for this email, a password reset link has been prepared.",
+        "message": "If an account exists for this email, a password reset link has been sent.",
     }
     if settings.EXPOSE_PASSWORD_RESET_TOKEN:
         response["reset_token"] = reset_token
     return response
 
 
-@router.post("/reset-password", response_model=PasswordResetResponse)
+@router.post("/reset-password", response_model=Token)
 def reset_password(
     request: Request,
     response: Response,
@@ -380,11 +384,16 @@ def reset_password(
     user.hashed_password = hash_password(body.new_password)
     user.token_version += 1
     db.commit()
-    response.delete_cookie(settings.ACCESS_TOKEN_COOKIE_NAME, path="/")
-    response.delete_cookie(settings.REFRESH_TOKEN_COOKIE_NAME, path="/api/v1/auth")
-    response.delete_cookie(settings.CSRF_COOKIE_NAME, path="/")
+    db.refresh(user)
 
-    return {"message": "Password updated successfully. You can now sign in with your new password."}
+    new_access_token = create_access_token({"sub": str(user.id), "rv": user.token_version})
+    new_refresh_token = create_refresh_token({"sub": str(user.id), "rv": user.token_version})
+    new_csrf_token = generate_csrf_token()
+    response.set_cookie(value=new_access_token, **cookie_settings())
+    response.set_cookie(value=new_refresh_token, **cookie_settings(refresh=True))
+    response.set_cookie(value=new_csrf_token, **csrf_cookie_settings())
+
+    return {"token_type": "bearer", "user": user}
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

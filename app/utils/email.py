@@ -45,6 +45,48 @@ def send_verification_email(to_email: str, full_name: str, token: str) -> None:
         server.sendmail(settings.GMAIL_USER, to_email, msg.as_string())
 
 
+def send_password_reset_email(to_email: str, full_name: str, token: str) -> None:
+    if not settings.GMAIL_USER or not settings.GMAIL_APP_PASSWORD:
+        return
+
+    reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token}"
+
+    html = f"""<!DOCTYPE html>
+<html>
+<body style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1e293b;">
+  <h2 style="margin-bottom:8px;">Reset your password</h2>
+  <p>Hi {full_name},</p>
+  <p>We received a request to reset the password for your <strong>{settings.EMAIL_FROM_NAME}</strong> account.
+     Click the button below to choose a new password:</p>
+  <p style="text-align:center;margin:32px 0;">
+    <a href="{reset_url}"
+       style="background:#dc2626;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:600;font-size:15px;">
+      Reset Password
+    </a>
+  </p>
+  <p style="font-size:13px;color:#64748b;">
+    Or copy and paste this link into your browser:<br>
+    <a href="{reset_url}" style="color:#2563eb;">{reset_url}</a>
+  </p>
+  <p style="font-size:13px;color:#64748b;">
+    This link expires in {settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} minutes.
+    If you did not request a password reset, you can safely ignore this email — your password will not change.
+  </p>
+</body>
+</html>"""
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = f"Reset your {settings.EMAIL_FROM_NAME} password"
+    msg["From"] = f"{settings.EMAIL_FROM_NAME} <{settings.GMAIL_USER}>"
+    msg["To"] = to_email
+    msg.attach(MIMEText(html, "html"))
+
+    with smtplib.SMTP("smtp.gmail.com", 587) as server:
+        server.starttls()
+        server.login(settings.GMAIL_USER, settings.GMAIL_APP_PASSWORD)
+        server.sendmail(settings.GMAIL_USER, to_email, msg.as_string())
+
+
 def send_manager_invite_email(to_email: str, full_name: str, temp_password: str, token: str) -> None:
     if not settings.GMAIL_USER or not settings.GMAIL_APP_PASSWORD:
         return

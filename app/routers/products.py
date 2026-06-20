@@ -31,6 +31,20 @@ def make_unique_slug(name: str, db: Session, exclude_id: int = None) -> str:
     return slug
 
 
+def ensure_unique_product_name(db: Session, name: str, exclude_id: Optional[int] = None):
+    query = db.query(Product).filter(
+        func.lower(Product.name) == name.strip().lower(),
+        Product.is_active == True,
+    )
+    if exclude_id:
+        query = query.filter(Product.id != exclude_id)
+    if query.first():
+        raise HTTPException(
+            status_code=400,
+            detail="A product with this name already exists",
+        )
+
+
 def attach_rating(product, db: Session):
     stats = (
         db.query(
@@ -160,8 +174,14 @@ def create_product(
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin),
 ):
-    slug = make_unique_slug(product_data.name, db)
+    name = product_data.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Name cannot be empty")
+    if product_data.is_active:
+        ensure_unique_product_name(db, name)
+    slug = make_unique_slug(name, db)
     data = product_data.model_dump(exclude={"category_ids", "variant_groups"})
+    data["name"] = name
     data["product_type"] = _infer_product_type(product_data.product_type, product_data.variant_groups)
     product = Product(**data, slug=slug)
     db.add(product)
@@ -190,8 +210,17 @@ def update_product(
         raise HTTPException(status_code=404, detail="Product not found")
 
     data = update_data.model_dump(exclude_unset=True, exclude={"category_ids", "variant_groups"})
+    candidate_name = data.get("name", product.name)
+    if candidate_name is not None:
+        candidate_name = candidate_name.strip()
+        if not candidate_name:
+            raise HTTPException(status_code=422, detail="Name cannot be empty")
+        data["name"] = candidate_name
+    candidate_active = data.get("is_active", product.is_active)
+    if candidate_active:
+        ensure_unique_product_name(db, candidate_name, exclude_id=product_id)
     if "name" in data:
-        product.slug = make_unique_slug(data["name"], db, exclude_id=product_id)
+        product.slug = make_unique_slug(candidate_name, db, exclude_id=product_id)
     if update_data.variant_groups is not None:
         data["product_type"] = _infer_product_type(update_data.product_type, update_data.variant_groups)
     elif update_data.product_type == ProductType.custom:

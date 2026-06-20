@@ -28,6 +28,20 @@ def _slugify(s: str) -> str:
     s = re.sub(r"[^\w\s-]", "", s, flags=re.ASCII)
     return re.sub(r"[\s_]+", "-", s).strip("-")
 
+
+def _make_unique_industry_slug(name: str, db: Session, exclude_id: Optional[int] = None) -> str:
+    base_slug = _slugify(name)
+    slug = base_slug
+    counter = 1
+    while True:
+        query = db.query(Industry).filter(Industry.slug == slug)
+        if exclude_id:
+            query = query.filter(Industry.id != exclude_id)
+        if not query.first():
+            return slug
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
@@ -428,9 +442,7 @@ def create_industry(body: IndustryIn, db: Session = Depends(get_db), admin=Depen
         raise HTTPException(status_code=422, detail="Name cannot be empty")
     if db.query(Industry).filter(func.lower(Industry.name) == name.lower()).first():
         raise HTTPException(status_code=409, detail="Industry already exists")
-    slug = _slugify(name)
-    if db.query(Industry).filter(Industry.slug == slug).first():
-        slug = f"{slug}-{secrets.token_hex(3)}"
+    slug = _make_unique_industry_slug(name, db)
     industry = Industry(name=name, slug=slug, is_active=body.is_active)
     db.add(industry)
     db.commit()
@@ -459,7 +471,7 @@ def update_industry(
     if conflict:
         raise HTTPException(status_code=409, detail="Industry name already in use")
     industry.name = name
-    industry.slug = _slugify(name)
+    industry.slug = _make_unique_industry_slug(name, db, exclude_id=industry_id)
     industry.is_active = body.is_active
     db.commit()
     db.refresh(industry)

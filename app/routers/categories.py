@@ -30,12 +30,11 @@ def make_unique_slug(name: str, db: Session, exclude_id: int = None) -> str:
 def ensure_unique_category_name(
     db: Session,
     name: str,
-    parent_id: Optional[int] = None,
     exclude_id: Optional[int] = None,
 ):
+    normalized_name = name.strip().lower()
     query = db.query(Category).filter(
-        func.lower(Category.name) == name.strip().lower(),
-        Category.parent_id == parent_id,
+        func.lower(Category.name) == normalized_name,
         Category.is_active == True,
     )
     if exclude_id:
@@ -43,7 +42,7 @@ def ensure_unique_category_name(
     if query.first():
         raise HTTPException(
             status_code=400,
-            detail="A category with this name already exists at the same level",
+            detail="A category or subcategory with this name already exists",
         )
 
 
@@ -94,9 +93,14 @@ def create_category(
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin),
 ):
-    ensure_unique_category_name(db, category_data.name, category_data.parent_id)
-    slug = make_unique_slug(category_data.name, db)
-    category = Category(**category_data.model_dump(), slug=slug)
+    name = category_data.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Name cannot be empty")
+    ensure_unique_category_name(db, name)
+    slug = make_unique_slug(name, db)
+    data = category_data.model_dump()
+    data["name"] = name
+    category = Category(**data, slug=slug)
     db.add(category)
     db.commit()
     db.refresh(category)
@@ -113,15 +117,19 @@ def update_category(
     category = db.query(Category).filter(Category.id == category_id).first()
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
-    if update_data.name:
-        ensure_unique_category_name(
-            db,
-            update_data.name,
-            update_data.parent_id if update_data.parent_id is not None else category.parent_id,
-            exclude_id=category_id,
-        )
-        category.slug = make_unique_slug(update_data.name, db, exclude_id=category_id)
-    for field, value in update_data.model_dump(exclude_unset=True).items():
+    data = update_data.model_dump(exclude_unset=True)
+    candidate_name = data.get("name", category.name)
+    if candidate_name is not None:
+        candidate_name = candidate_name.strip()
+        if not candidate_name:
+            raise HTTPException(status_code=422, detail="Name cannot be empty")
+        data["name"] = candidate_name
+    candidate_active = data.get("is_active", category.is_active)
+    if candidate_active:
+        ensure_unique_category_name(db, candidate_name, exclude_id=category_id)
+    if "name" in data:
+        category.slug = make_unique_slug(candidate_name, db, exclude_id=category_id)
+    for field, value in data.items():
         setattr(category, field, value)
     db.commit()
     db.refresh(category)

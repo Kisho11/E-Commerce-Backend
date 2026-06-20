@@ -50,3 +50,7 @@ class OrderItem(Base):
 
     order = relationship("Order", back_populates="items")
     product = relationship("Product", back_populates="order_items")
+
+    @property
+    def product_name(self):
+        return self.product.name if self.product else ""

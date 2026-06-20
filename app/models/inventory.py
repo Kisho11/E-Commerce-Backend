@@ -47,6 +47,10 @@ class Inventory(Base):
             return None
         return round(self.available / float(self.avg_daily_usage))
 
+    @property
+    def product_name(self):
+        return self.product.name if self.product else None
+
 
 class StockMovement(Base):
     __tablename__ = "stock_movements"

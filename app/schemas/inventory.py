@@ -29,6 +29,7 @@ class StockMovementResponse(BaseModel):
 class InventoryResponse(BaseModel):
     id: int
     product_id: int
+    product_name: Optional[str] = None
     on_hand: int
     reserved: int
     available: int

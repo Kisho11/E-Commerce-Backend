@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import String, cast, func, or_
 from typing import List, Optional
 from app.database import get_db
 from app.models.inventory import Inventory, StockMovement, MovementType
@@ -27,26 +27,68 @@ def _get_or_create_inventory(product_id: int, db: Session) -> Inventory:
     return inv
 
 
+def _ensure_inventory_for_active_products(db: Session) -> None:
+    missing_products = (
+        db.query(Product)
+        .outerjoin(Inventory, Inventory.product_id == Product.id)
+        .filter(Product.is_active == True, Inventory.id == None)
+        .all()
+    )
+    if not missing_products:
+        return
+
+    for product in missing_products:
+        db.add(Inventory(product_id=product.id, on_hand=product.stock_quantity or 0))
+    db.commit()
+
+
 @router.get("/", response_model=List[InventoryResponse])
 def list_inventory(
     page: int = Query(1, ge=1),
-    per_page: int = Query(50, ge=1, le=200),
+    per_page: int = Query(50, ge=1, le=2000),
     status: Optional[str] = Query(None, description="Healthy | Low Stock | Out of Stock"),
+    search: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     user=Depends(get_current_manager),
 ):
-    q = db.query(Inventory).join(Product).filter(Product.is_active == True)
-    records = q.offset((page - 1) * per_page).limit(per_page).all()
+    _ensure_inventory_for_active_products(db)
+
+    q = (
+        db.query(Inventory)
+        .join(Product)
+        .options(joinedload(Inventory.product))
+        .filter(Product.is_active == True)
+    )
+
+    if search:
+        for term in search.strip().split():
+            pattern = f"%{term}%"
+            q = q.filter(
+                or_(
+                    Product.name.ilike(pattern),
+                    cast(Product.id, String).ilike(pattern),
+                    Inventory.location.ilike(pattern),
+                    Inventory.supplier.ilike(pattern),
+                )
+            )
 
     if status:
-        records = [r for r in records if r.status == status]
+        if status == "Healthy":
+            q = q.filter(Inventory.on_hand > Inventory.reorder_level)
+        elif status == "Low Stock":
+            q = q.filter(Inventory.on_hand > 0, Inventory.on_hand <= Inventory.reorder_level)
+        elif status == "Out of Stock":
+            q = q.filter(Inventory.on_hand <= 0)
+
+    records = q.order_by(Product.name.asc()).offset((page - 1) * per_page).limit(per_page).all()
 
     return records
 
 
 @router.get("/summary", response_model=InventorySummary)
 def inventory_summary(db: Session = Depends(get_db), user=Depends(get_current_manager)):
-    all_inv = db.query(Inventory).all()
+    _ensure_inventory_for_active_products(db)
+    all_inv = db.query(Inventory).join(Product).filter(Product.is_active == True).all()
     low = [i for i in all_inv if i.on_hand > 0 and i.on_hand <= i.reorder_level]
     out = [i for i in all_inv if i.on_hand <= 0]
     healthy = [i for i in all_inv if i.on_hand > i.reorder_level]

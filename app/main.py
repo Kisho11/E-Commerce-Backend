@@ -14,7 +14,7 @@ from app.database import engine, Base
 # Import all models so Base.metadata is populated before create_all
 import app.models  # noqa: F401
 
-from app.routers import auth, users, categories, products, cart, orders, reviews, payments, admin, inventory, tasks, manager
+from app.routers import auth, users, categories, products, cart, orders, reviews, payments, admin, inventory, tasks, manager, product_content
 
 # Create all tables on startup
 Base.metadata.create_all(bind=engine)
@@ -171,6 +171,7 @@ app.include_router(auth.router,       prefix=API)
 app.include_router(users.router,      prefix=API)
 app.include_router(categories.router, prefix=API)
 app.include_router(products.router,   prefix=API)
+app.include_router(product_content.router, prefix=API)
 app.include_router(cart.router,       prefix=API)
 app.include_router(orders.router,     prefix=API)
 app.include_router(reviews.router,    prefix=API)

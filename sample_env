@@ -38,6 +38,11 @@ GOOGLE_CLIENT_ID=827162933941-ch04j40p1k00q8julhdoimsr72851lk5.apps.googleuserco
 STRIPE_SECRET_KEY=sk_test_your_stripe_secret_key
 STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
 
+# OpenAI product-content generation
+# Keep the real key only in .env or your deployment secret manager. Never commit it.
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4.1-mini
+
 # ── File Upload ───────────────────────────────────────────────────────────────
 UPLOAD_DIR=uploads
 MAX_FILE_SIZE=5242880

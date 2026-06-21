@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: str = "sk_test_placeholder"
     STRIPE_WEBHOOK_SECRET: str = ""
 
+    # OpenAI product-content generation
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4.1-mini"
+
     # Google OAuth
     GOOGLE_CLIENT_ID: str = ""
 

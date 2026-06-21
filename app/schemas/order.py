@@ -20,6 +20,7 @@ class OrderItemResponse(BaseModel):
 class OrderCreate(BaseModel):
     address_id: int
     notes: Optional[str] = None
+    cart_item_ids: Optional[List[int]] = None
 
 
 class OrderStatusUpdate(BaseModel):

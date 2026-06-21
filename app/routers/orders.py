@@ -41,7 +41,16 @@ def create_order(
     if not locked_cart or not locked_cart.items:
         raise HTTPException(status_code=400, detail="Cart is empty")
 
-    product_ids = [item.product_id for item in locked_cart.items]
+    selected_cart_items = list(locked_cart.items)
+    if order_data.cart_item_ids is not None:
+        requested_item_ids = set(order_data.cart_item_ids)
+        selected_cart_items = [item for item in locked_cart.items if item.id in requested_item_ids]
+        if not selected_cart_items:
+            raise HTTPException(status_code=400, detail="Select at least one cart item to checkout")
+        if len(selected_cart_items) != len(requested_item_ids):
+            raise HTTPException(status_code=400, detail="One or more selected cart items were not found")
+
+    product_ids = [item.product_id for item in selected_cart_items]
     locked_products = (
         db.execute(
             select(Product)
@@ -54,7 +63,7 @@ def create_order(
     products_by_id = {product.id: product for product in locked_products}
 
     total = Decimal("0")
-    for item in locked_cart.items:
+    for item in selected_cart_items:
         product = products_by_id.get(item.product_id)
         if not product:
             raise HTTPException(status_code=404, detail="Product not found during checkout")
@@ -78,7 +87,7 @@ def create_order(
     db.add(order)
     db.flush()
 
-    for item in locked_cart.items:
+    for item in selected_cart_items:
         product = products_by_id[item.product_id]
         price = product.sale_price or product.price
         db.add(
@@ -92,7 +101,11 @@ def create_order(
         )
         product.stock_quantity -= item.quantity
 
-    db.query(CartItem).filter(CartItem.cart_id == locked_cart.id).delete()
+    selected_item_ids = [item.id for item in selected_cart_items]
+    db.query(CartItem).filter(
+        CartItem.cart_id == locked_cart.id,
+        CartItem.id.in_(selected_item_ids),
+    ).delete(synchronize_session=False)
     db.commit()
     db.refresh(order)
     return order

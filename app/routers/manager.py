@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List, Optional
@@ -8,7 +8,7 @@ from app.models.product import Product
 from app.models.inventory import Inventory
 from app.models.review import Review
 from app.core.dependencies import get_current_manager
-from app.schemas.order import OrderResponse
+from app.schemas.order import OrderResponse, OrderStatusUpdate
 
 router = APIRouter(prefix="/manager", tags=["Manager"])
 
@@ -53,3 +53,20 @@ def manager_get_orders(
         .limit(per_page)
         .all()
     )
+
+
+@router.put("/orders/{order_id}/status", response_model=OrderResponse)
+def manager_update_order_status(
+    order_id: int,
+    status_update: OrderStatusUpdate,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_manager),
+):
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    order.status = status_update.status
+    db.commit()
+    db.refresh(order)
+    return order

@@ -1,7 +1,25 @@
 import smtplib
+from decimal import Decimal
+from html import escape
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from app.config import settings
+
+
+def _send_html_email(to_email: str, subject: str, html: str) -> None:
+    if not settings.GMAIL_USER or not settings.GMAIL_APP_PASSWORD:
+        return
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = f"{settings.EMAIL_FROM_NAME} <{settings.GMAIL_USER}>"
+    msg["To"] = to_email
+    msg.attach(MIMEText(html, "html"))
+
+    with smtplib.SMTP("smtp.gmail.com", 587) as server:
+        server.starttls()
+        server.login(settings.GMAIL_USER, settings.GMAIL_APP_PASSWORD)
+        server.sendmail(settings.GMAIL_USER, to_email, msg.as_string())
 
 
 def send_verification_email(to_email: str, full_name: str, token: str) -> None:
@@ -43,6 +61,158 @@ def send_verification_email(to_email: str, full_name: str, token: str) -> None:
         server.starttls()
         server.login(settings.GMAIL_USER, settings.GMAIL_APP_PASSWORD)
         server.sendmail(settings.GMAIL_USER, to_email, msg.as_string())
+
+
+def send_order_confirmation_email(
+    to_email: str,
+    full_name: str,
+    order_id: int,
+    total_amount,
+    delivery_mode: str,
+    delivery_note: str | None,
+    address: dict | None,
+    items: list[dict],
+) -> None:
+    if not settings.GMAIL_USER or not settings.GMAIL_APP_PASSWORD:
+        return
+
+    mode_label = "Pickup from store" if delivery_mode == "pickup" else "Ship to address"
+    order_url = f"{settings.FRONTEND_URL}/customer-portal"
+    total = Decimal(str(total_amount or 0))
+    item_rows = "".join(
+        f"""
+        <tr>
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;">{escape(str(item.get("name") or "Product"))}</td>
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;text-align:center;">{int(item.get("quantity") or 0)}</td>
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;text-align:right;">£{Decimal(str(item.get("line_total") or 0)):.2f}</td>
+        </tr>
+        """
+        for item in items
+    )
+    address_lines = []
+    if address:
+        address_lines = [
+            address.get("address_line1"),
+            address.get("address_line2"),
+            address.get("city"),
+            address.get("state"),
+            address.get("postal_code"),
+            address.get("country"),
+        ]
+    address_html = "<br>".join(escape(str(line)) for line in address_lines if line)
+    if not address_html:
+        address_html = "Pickup from store"
+
+    note_html = ""
+    if delivery_note:
+        note_html = f"""
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-top:16px;">
+          <p style="margin:0 0 6px;font-size:13px;color:#64748b;font-weight:700;text-transform:uppercase;">Delivery note</p>
+          <p style="margin:0;">{escape(delivery_note)}</p>
+        </div>
+        """
+
+    html = f"""<!DOCTYPE html>
+<html>
+<body style="font-family:sans-serif;max-width:620px;margin:0 auto;padding:24px;color:#1e293b;">
+  <h2 style="margin-bottom:8px;">Order confirmed</h2>
+  <p>Hi {escape(full_name or "Customer")},</p>
+  <p>Thanks for your order at <strong>{escape(settings.EMAIL_FROM_NAME)}</strong>. We have received your order and will process it shortly.</p>
+
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin:24px 0;">
+    <p style="margin:0 0 8px;"><strong>Order ID:</strong> #{order_id}</p>
+    <p style="margin:0 0 8px;"><strong>Delivery:</strong> {mode_label}</p>
+    <p style="margin:0;"><strong>Total:</strong> £{total:.2f}</p>
+  </div>
+
+  <h3 style="margin-bottom:10px;">Items</h3>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+    <thead>
+      <tr style="background:#f1f5f9;">
+        <th style="padding:10px;text-align:left;">Product</th>
+        <th style="padding:10px;text-align:center;">Qty</th>
+        <th style="padding:10px;text-align:right;">Total</th>
+      </tr>
+    </thead>
+    <tbody>{item_rows}</tbody>
+  </table>
+
+  <h3 style="margin-bottom:8px;">Delivery details</h3>
+  <p style="margin-top:0;">{address_html}</p>
+  {note_html}
+
+  <p style="text-align:center;margin:28px 0;">
+    <a href="{order_url}"
+       style="background:#dc2626;color:#fff;padding:13px 24px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;">
+      View My Orders
+    </a>
+  </p>
+  <p style="font-size:13px;color:#64748b;">
+    If you have any questions, reply to this email or contact our support team.
+  </p>
+</body>
+</html>"""
+
+    _send_html_email(to_email, f"Order #{order_id} confirmed", html)
+
+
+def send_cart_reminder_email(
+    to_email: str,
+    full_name: str,
+    items: list[dict],
+    total_amount,
+) -> None:
+    if not settings.GMAIL_USER or not settings.GMAIL_APP_PASSWORD:
+        return
+
+    cart_url = f"{settings.FRONTEND_URL}/cart"
+    total = Decimal(str(total_amount or 0))
+    item_rows = "".join(
+        f"""
+        <tr>
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;">{escape(str(item.get("name") or "Product"))}</td>
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;text-align:center;">{int(item.get("quantity") or 0)}</td>
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;text-align:right;">£{Decimal(str(item.get("line_total") or 0)):.2f}</td>
+        </tr>
+        """
+        for item in items
+    )
+
+    html = f"""<!DOCTYPE html>
+<html>
+<body style="font-family:sans-serif;max-width:620px;margin:0 auto;padding:24px;color:#1e293b;">
+  <h2 style="margin-bottom:8px;">You still have items in your cart</h2>
+  <p>Hi {escape(full_name or "Customer")},</p>
+  <p>You left some products in your <strong>{escape(settings.EMAIL_FROM_NAME)}</strong> cart. If you still need them, you can return to your cart and complete checkout.</p>
+
+  <table style="width:100%;border-collapse:collapse;margin:22px 0;">
+    <thead>
+      <tr style="background:#f1f5f9;">
+        <th style="padding:10px;text-align:left;">Product</th>
+        <th style="padding:10px;text-align:center;">Qty</th>
+        <th style="padding:10px;text-align:right;">Total</th>
+      </tr>
+    </thead>
+    <tbody>{item_rows}</tbody>
+  </table>
+
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin:20px 0;text-align:right;">
+    <strong>Cart total: £{total:.2f}</strong>
+  </div>
+
+  <p style="text-align:center;margin:28px 0;">
+    <a href="{cart_url}"
+       style="background:#dc2626;color:#fff;padding:13px 24px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;">
+      Return to Cart
+    </a>
+  </p>
+  <p style="font-size:13px;color:#64748b;">
+    This reminder is sent monthly while products remain in your cart.
+  </p>
+</body>
+</html>"""
+
+    _send_html_email(to_email, "Reminder: items are waiting in your cart", html)
 
 
 def send_password_reset_email(to_email: str, full_name: str, token: str) -> None:

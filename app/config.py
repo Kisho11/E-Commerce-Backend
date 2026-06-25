@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:3000"
     EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24
     MANAGER_INVITE_TOKEN_EXPIRE_HOURS: int = 72
+    CART_REMINDER_ENABLED: bool = True
+    CART_REMINDER_MIN_CART_AGE_DAYS: int = 30
+    CART_REMINDER_INTERVAL_DAYS: int = 30
+    CART_REMINDER_CHECK_INTERVAL_HOURS: int = 24
 
     # File Upload
     UPLOAD_DIR: str = "uploads"

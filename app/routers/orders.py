@@ -1,5 +1,6 @@
 from decimal import Decimal
-from fastapi import APIRouter, Depends, HTTPException, Query
+import logging
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from typing import List, Optional
@@ -10,13 +11,23 @@ from app.models.address import Address
 from app.models.product import Product
 from app.schemas.order import OrderCreate, OrderResponse, OrderStatusUpdate
 from app.core.dependencies import get_current_user, get_current_admin
+from app.utils.email import send_order_confirmation_email
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
+logger = logging.getLogger(__name__)
+
+
+def send_order_confirmation_email_safely(**payload):
+    try:
+        send_order_confirmation_email(**payload)
+    except Exception:
+        logger.exception("Failed to send order confirmation email for order %s", payload.get("order_id"))
 
 
 @router.post("/", response_model=OrderResponse, status_code=201)
 def create_order(
     order_data: OrderCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -93,18 +104,25 @@ def create_order(
     db.add(order)
     db.flush()
 
+    email_items = []
     for item in selected_cart_items:
         product = products_by_id[item.product_id]
         price = product.sale_price or product.price
+        line_total = price * item.quantity
         db.add(
             OrderItem(
                 order_id=order.id,
                 product_id=product.id,
                 quantity=item.quantity,
                 unit_price=price,
-                total_price=price * item.quantity,
+                total_price=line_total,
             )
         )
+        email_items.append({
+            "name": product.name,
+            "quantity": item.quantity,
+            "line_total": float(line_total),
+        })
         product.stock_quantity -= item.quantity
 
     selected_item_ids = [item.id for item in selected_cart_items]
@@ -114,6 +132,24 @@ def create_order(
     ).delete(synchronize_session=False)
     db.commit()
     db.refresh(order)
+    background_tasks.add_task(
+        send_order_confirmation_email_safely,
+        to_email=current_user.email,
+        full_name=current_user.full_name,
+        order_id=order.id,
+        total_amount=float(order.total_amount),
+        delivery_mode=order.delivery_mode,
+        delivery_note=order.delivery_note,
+        address={
+            "address_line1": address.address_line1,
+            "address_line2": address.address_line2,
+            "city": address.city,
+            "state": address.state,
+            "postal_code": address.postal_code,
+            "country": address.country,
+        },
+        items=email_items,
+    )
     return order
 
 

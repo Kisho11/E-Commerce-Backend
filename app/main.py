@@ -10,6 +10,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from app.config import settings
 from app.database import engine, Base
+from app.services.cart_reminders import start_cart_reminder_scheduler, stop_cart_reminder_scheduler
 
 # Import all models so Base.metadata is populated before create_all
 import app.models  # noqa: F401
@@ -91,6 +92,16 @@ def ensure_runtime_schema_updates():
                 if "already exists" not in str(error).lower():
                     raise
 
+    if "carts" in table_names:
+        cart_columns = {column["name"] for column in inspector.get_columns("carts")}
+        if "last_reminder_at" not in cart_columns:
+            try:
+                with engine.begin() as connection:
+                    connection.execute(text("ALTER TABLE carts ADD COLUMN last_reminder_at TIMESTAMP WITH TIME ZONE NULL"))
+            except (OperationalError, ProgrammingError) as error:
+                if "already exists" not in str(error).lower():
+                    raise
+
     if "products" not in table_names:
         return
 
@@ -122,6 +133,16 @@ app = FastAPI(
     redoc_url="/redoc" if settings.ENABLE_DOCS else None,
     openapi_url="/openapi.json" if settings.ENABLE_DOCS else None,
 )
+
+
+@app.on_event("startup")
+async def start_background_services():
+    start_cart_reminder_scheduler(app)
+
+
+@app.on_event("shutdown")
+async def stop_background_services():
+    await stop_cart_reminder_scheduler(app)
 
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.TRUSTED_HOSTS or ["localhost"])
 

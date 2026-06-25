@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -8,6 +9,10 @@ from app.schemas.cart import CartItemCreate, CartItemUpdate, CartResponse
 from app.core.dependencies import get_current_user
 
 router = APIRouter(prefix="/cart", tags=["Cart"])
+
+
+def mark_cart_activity(cart: Cart) -> None:
+    cart.updated_at = datetime.now(timezone.utc)
 
 
 def get_or_create_cart(user, db: Session) -> Cart:
@@ -77,6 +82,7 @@ def add_to_cart(
         existing.quantity = new_qty
     else:
         db.add(CartItem(cart_id=cart.id, **item_data.model_dump()))
+    mark_cart_activity(cart)
 
     db.commit()
     db.refresh(cart)
@@ -105,6 +111,7 @@ def update_cart_item(
         if item.product.stock_quantity > 0 and item.product.stock_quantity < update_data.quantity:
             raise HTTPException(status_code=400, detail="Insufficient stock")
         item.quantity = update_data.quantity
+    mark_cart_activity(cart)
 
     db.commit()
     db.refresh(cart)
@@ -126,6 +133,7 @@ def remove_cart_item(
     if not item:
         raise HTTPException(status_code=404, detail="Cart item not found")
     db.delete(item)
+    mark_cart_activity(cart)
     db.commit()
     db.refresh(cart)
     return build_cart_response(cart)
@@ -135,4 +143,5 @@ def remove_cart_item(
 def clear_cart(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
     cart = get_or_create_cart(current_user, db)
     db.query(CartItem).filter(CartItem.cart_id == cart.id).delete()
+    mark_cart_activity(cart)
     db.commit()

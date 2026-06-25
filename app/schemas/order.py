@@ -19,6 +19,8 @@ class OrderItemResponse(BaseModel):
 
 class OrderCreate(BaseModel):
     address_id: int
+    delivery_mode: str = "ship"
+    delivery_note: Optional[str] = None
     notes: Optional[str] = None
     cart_item_ids: Optional[List[int]] = None
 
@@ -34,6 +36,8 @@ class OrderResponse(BaseModel):
     total_amount: Decimal
     payment_status: PaymentStatus
     payment_intent_id: Optional[str] = None
+    delivery_mode: str = "ship"
+    delivery_note: Optional[str] = None
     notes: Optional[str] = None
     address: AddressResponse
     items: List[OrderItemResponse] = []

@@ -10,6 +10,7 @@ from sqlalchemy import func
 from typing import List, Optional
 from app.database import get_db
 from app.models.user import User, UserRole
+from app.models.address import Address
 from app.models.order import Order, OrderStatus, PaymentStatus
 from app.models.product import Product
 from app.models.industry import Industry
@@ -293,6 +294,18 @@ def list_customers(
         q = q.order_by(sort_col.desc())
 
     rows = q.offset((page - 1) * per_page).limit(per_page).all()
+    user_ids = [user.id for user, *_ in rows]
+    address_rows = (
+        db.query(Address)
+        .filter(Address.user_id.in_(user_ids))
+        .order_by(Address.is_default.desc(), Address.created_at.desc())
+        .all()
+        if user_ids
+        else []
+    )
+    address_by_user_id = {}
+    for address in address_rows:
+        address_by_user_id.setdefault(address.user_id, address)
 
     items = [
         {
@@ -305,6 +318,22 @@ def list_customers(
             "order_count": order_count,
             "total_spent": float(total_spent),
             "last_order_date": last_order_date,
+            "address": (
+                {
+                    "id": address_by_user_id[user.id].id,
+                    "full_name": address_by_user_id[user.id].full_name,
+                    "phone": address_by_user_id[user.id].phone,
+                    "address_line1": address_by_user_id[user.id].address_line1,
+                    "address_line2": address_by_user_id[user.id].address_line2,
+                    "city": address_by_user_id[user.id].city,
+                    "state": address_by_user_id[user.id].state,
+                    "postal_code": address_by_user_id[user.id].postal_code,
+                    "country": address_by_user_id[user.id].country,
+                    "is_default": address_by_user_id[user.id].is_default,
+                }
+                if user.id in address_by_user_id
+                else None
+            ),
         }
         for user, order_count, total_spent, last_order_date in rows
     ]

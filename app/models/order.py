@@ -29,6 +29,8 @@ class Order(Base):
     total_amount = Column(Numeric(10, 2), nullable=False)
     payment_status = Column(Enum(PaymentStatus), default=PaymentStatus.pending)
     payment_intent_id = Column(String, nullable=True)
+    delivery_mode = Column(String, nullable=False, default="ship")
+    delivery_note = Column(String, nullable=True)
     notes = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

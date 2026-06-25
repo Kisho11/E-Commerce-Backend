@@ -74,6 +74,23 @@ def ensure_runtime_schema_updates():
                 if "already exists" not in str(error).lower():
                     raise
 
+    if "orders" in table_names:
+        order_columns = {column["name"] for column in inspector.get_columns("orders")}
+        if "delivery_mode" not in order_columns:
+            try:
+                with engine.begin() as connection:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN delivery_mode VARCHAR NOT NULL DEFAULT 'ship'"))
+            except (OperationalError, ProgrammingError) as error:
+                if "already exists" not in str(error).lower():
+                    raise
+        if "delivery_note" not in order_columns:
+            try:
+                with engine.begin() as connection:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN delivery_note VARCHAR"))
+            except (OperationalError, ProgrammingError) as error:
+                if "already exists" not in str(error).lower():
+                    raise
+
     if "products" not in table_names:
         return
 

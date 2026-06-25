@@ -20,6 +20,10 @@ def create_order(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    delivery_mode = (order_data.delivery_mode or "ship").strip().lower()
+    if delivery_mode not in {"ship", "pickup"}:
+        raise HTTPException(status_code=422, detail="Invalid delivery mode")
+
     address = (
         db.query(Address)
         .filter(Address.id == order_data.address_id, Address.user_id == current_user.id)
@@ -82,6 +86,8 @@ def create_order(
         user_id=current_user.id,
         address_id=address.id,
         total_amount=total,
+        delivery_mode=delivery_mode,
+        delivery_note=(order_data.delivery_note or "").strip() or None,
         notes=order_data.notes,
     )
     db.add(order)

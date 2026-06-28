@@ -160,11 +160,15 @@ def finalize_paid_order(
     db.commit()
     db.refresh(order)
 
-    email_payload = build_order_email_payload(order)
-    if background_tasks:
-        background_tasks.add_task(send_order_confirmation_email_safely, **email_payload)
-    else:
-        send_order_confirmation_email_safely(**email_payload)
+    try:
+        email_payload = build_order_email_payload(order)
+        if background_tasks:
+            background_tasks.add_task(send_order_confirmation_email_safely, **email_payload)
+        else:
+            send_order_confirmation_email_safely(**email_payload)
+    except Exception:
+        logger.exception("Failed to build/send confirmation email for order %s", order.id)
+
     return order
 
 
@@ -222,8 +226,11 @@ def create_payment_intent(
         return {"client_secret": intent.client_secret, "payment_intent_id": intent.id}
     except HTTPException:
         raise
-    except stripe.error.StripeError as e:
+    except stripe.StripeError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        logger.exception("Unexpected error creating payment intent for order %s", order_id)
+        raise HTTPException(status_code=500, detail="Unable to initialize payment. Please try again.")
 
 
 @router.post("/confirm-order/{order_id}", response_model=OrderResponse)
@@ -245,7 +252,7 @@ def confirm_order_payment(
 
     try:
         intent = stripe.PaymentIntent.retrieve(order.payment_intent_id)
-    except stripe.error.StripeError as e:
+    except stripe.StripeError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     if not intent_matches_order(intent, order):
@@ -260,12 +267,18 @@ def confirm_order_payment(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    if intent.status == "succeeded":
-        return finalize_paid_order(order, db, background_tasks)
+    try:
+        if intent.status == "succeeded":
+            return finalize_paid_order(order, db, background_tasks)
 
-    if intent.status in {"requires_payment_method", "canceled"}:
-        mark_order_payment_failed(order, db)
-        raise HTTPException(status_code=402, detail="Payment failed. Please try another card.")
+        if intent.status in {"requires_payment_method", "canceled"}:
+            mark_order_payment_failed(order, db)
+            raise HTTPException(status_code=402, detail="Payment failed. Please try another card.")
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Unexpected error confirming order %s", order_id)
+        raise HTTPException(status_code=500, detail="Unable to confirm your payment. Please contact support.")
 
     raise HTTPException(
         status_code=409,
@@ -292,7 +305,7 @@ def mark_payment_failed(
 
     try:
         intent = stripe.PaymentIntent.retrieve(existing_order.payment_intent_id)
-    except stripe.error.StripeError as e:
+    except stripe.StripeError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     if not intent_matches_order(intent, existing_order):
@@ -307,10 +320,16 @@ def mark_payment_failed(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    if intent.status == "succeeded":
-        return finalize_paid_order(order, db, background_tasks)
-    if intent.status in REPLACEABLE_PAYMENT_INTENT_STATUSES:
-        return mark_order_payment_failed(order, db)
+    try:
+        if intent.status == "succeeded":
+            return finalize_paid_order(order, db, background_tasks)
+        if intent.status in REPLACEABLE_PAYMENT_INTENT_STATUSES:
+            return mark_order_payment_failed(order, db)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Unexpected error marking payment failed for order %s", order_id)
+        raise HTTPException(status_code=500, detail="Unable to update order status. Please contact support.")
 
     raise HTTPException(
         status_code=409,
@@ -339,10 +358,13 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             .first()
         )
         if order:
-            if intent_matches_order(pi, order):
-                finalize_paid_order(order, db)
-            else:
-                logger.warning("Ignoring mismatched succeeded PaymentIntent %s for order %s", pi["id"], order.id)
+            try:
+                if intent_matches_order(pi, order):
+                    finalize_paid_order(order, db)
+                else:
+                    logger.warning("Ignoring mismatched succeeded PaymentIntent %s for order %s", pi["id"], order.id)
+            except Exception:
+                logger.exception("Error processing payment_intent.succeeded for order %s", order.id)
 
     elif event["type"] == "payment_intent.payment_failed":
         pi = event["data"]["object"]
@@ -353,9 +375,12 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             .first()
         )
         if order:
-            if intent_matches_order(pi, order):
-                mark_order_payment_failed(order, db)
-            else:
-                logger.warning("Ignoring mismatched failed PaymentIntent %s for order %s", pi["id"], order.id)
+            try:
+                if intent_matches_order(pi, order):
+                    mark_order_payment_failed(order, db)
+                else:
+                    logger.warning("Ignoring mismatched failed PaymentIntent %s for order %s", pi["id"], order.id)
+            except Exception:
+                logger.exception("Error processing payment_intent.payment_failed for order %s", order.id)
 
     return {"status": "ok"}

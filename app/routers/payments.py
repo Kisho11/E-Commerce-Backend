@@ -81,7 +81,7 @@ def stripe_currency() -> str:
 
 
 def intent_matches_order(intent, order: Order) -> bool:
-    meta = dict(intent.metadata) if intent.metadata else {}
+    meta = dict(intent.metadata.items()) if intent.metadata else {}
     return (
         int(intent.amount) == stripe_amount_for_order(order)
         and str(intent.currency).lower() == stripe_currency()

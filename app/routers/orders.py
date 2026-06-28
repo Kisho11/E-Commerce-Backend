@@ -1,33 +1,39 @@
 from decimal import Decimal
-import logging
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+import json
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from typing import List, Optional
 from app.database import get_db
-from app.models.order import Order, OrderItem, OrderStatus
-from app.models.cart import Cart, CartItem
+from app.models.order import Order, OrderItem, OrderStatus, PaymentStatus
+from app.models.cart import Cart
 from app.models.address import Address
 from app.models.product import Product
 from app.schemas.order import OrderCreate, OrderResponse, OrderStatusUpdate
 from app.core.dependencies import get_current_user, get_current_admin
-from app.utils.email import send_order_confirmation_email
+from app.config import settings
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
-logger = logging.getLogger(__name__)
+MONEY_QUANT = Decimal("0.01")
 
 
-def send_order_confirmation_email_safely(**payload):
-    try:
-        send_order_confirmation_email(**payload)
-    except Exception:
-        logger.exception("Failed to send order confirmation email for order %s", payload.get("order_id"))
+def get_checkout_tax_rate() -> Decimal:
+    return Decimal(str(settings.CHECKOUT_TAX_RATE or "0"))
+
+
+def release_reserved_stock(order: Order) -> None:
+    if not order.stock_reserved:
+        return
+
+    for item in order.items:
+        if item.product:
+            item.product.stock_quantity += item.quantity
+    order.stock_reserved = False
 
 
 @router.post("/", response_model=OrderResponse, status_code=201)
 def create_order(
     order_data: OrderCreate,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -77,7 +83,7 @@ def create_order(
     )
     products_by_id = {product.id: product for product in locked_products}
 
-    total = Decimal("0")
+    subtotal = Decimal("0")
     for item in selected_cart_items:
         product = products_by_id.get(item.product_id)
         if not product:
@@ -91,12 +97,20 @@ def create_order(
                 status_code=400, detail=f"Insufficient stock for '{product.name}'"
             )
         price = product.sale_price or product.price
-        total += price * item.quantity
+        subtotal += price * item.quantity
 
+    total = (subtotal * (Decimal("1") + get_checkout_tax_rate())).quantize(MONEY_QUANT)
+
+    selected_item_ids = [item.id for item in selected_cart_items]
+    stock_reserved = False
     order = Order(
         user_id=current_user.id,
         address_id=address.id,
         total_amount=total,
+        status=OrderStatus.pending,
+        payment_status=PaymentStatus.pending,
+        checkout_cart_item_ids=json.dumps(selected_item_ids),
+        stock_reserved=False,
         delivery_mode=delivery_mode,
         delivery_note=(order_data.delivery_note or "").strip() or None,
         notes=order_data.notes,
@@ -104,7 +118,6 @@ def create_order(
     db.add(order)
     db.flush()
 
-    email_items = []
     for item in selected_cart_items:
         product = products_by_id[item.product_id]
         price = product.sale_price or product.price
@@ -118,38 +131,14 @@ def create_order(
                 total_price=line_total,
             )
         )
-        email_items.append({
-            "name": product.name,
-            "quantity": item.quantity,
-            "line_total": float(line_total),
-        })
-        product.stock_quantity -= item.quantity
+        if product.stock_quantity > 0:
+            product.stock_quantity -= item.quantity
+            stock_reserved = True
 
-    selected_item_ids = [item.id for item in selected_cart_items]
-    db.query(CartItem).filter(
-        CartItem.cart_id == locked_cart.id,
-        CartItem.id.in_(selected_item_ids),
-    ).delete(synchronize_session=False)
+    order.stock_reserved = stock_reserved
+
     db.commit()
     db.refresh(order)
-    background_tasks.add_task(
-        send_order_confirmation_email_safely,
-        to_email=current_user.email,
-        full_name=current_user.full_name,
-        order_id=order.id,
-        total_amount=float(order.total_amount),
-        delivery_mode=order.delivery_mode,
-        delivery_note=order.delivery_note,
-        address={
-            "address_line1": address.address_line1,
-            "address_line2": address.address_line2,
-            "city": address.city,
-            "state": address.state,
-            "postal_code": address.postal_code,
-            "country": address.country,
-        },
-        items=email_items,
-    )
     return order
 
 
@@ -197,9 +186,7 @@ def cancel_order(
     if order.status not in [OrderStatus.pending, OrderStatus.confirmed]:
         raise HTTPException(status_code=400, detail="Order cannot be cancelled at this stage")
 
-    for item in order.items:
-        item.product.stock_quantity += item.quantity
-
+    release_reserved_stock(order)
     order.status = OrderStatus.cancelled
     db.commit()
     db.refresh(order)

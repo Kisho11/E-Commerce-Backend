@@ -91,6 +91,20 @@ def ensure_runtime_schema_updates():
             except (OperationalError, ProgrammingError) as error:
                 if "already exists" not in str(error).lower():
                     raise
+        if "checkout_cart_item_ids" not in order_columns:
+            try:
+                with engine.begin() as connection:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN checkout_cart_item_ids VARCHAR"))
+            except (OperationalError, ProgrammingError) as error:
+                if "already exists" not in str(error).lower():
+                    raise
+        if "stock_reserved" not in order_columns:
+            try:
+                with engine.begin() as connection:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN stock_reserved BOOLEAN NOT NULL DEFAULT FALSE"))
+            except (OperationalError, ProgrammingError) as error:
+                if "already exists" not in str(error).lower():
+                    raise
 
     if "carts" in table_names:
         cart_columns = {column["name"] for column in inspector.get_columns("carts")}

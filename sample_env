@@ -37,6 +37,8 @@ GOOGLE_CLIENT_ID=827162933941-ch04j40p1k00q8julhdoimsr72851lk5.apps.googleuserco
 # Get keys at: https://dashboard.stripe.com/apikeys
 STRIPE_SECRET_KEY=sk_test_your_stripe_secret_key
 STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
+PAYMENT_CURRENCY=gbp
+CHECKOUT_TAX_RATE=0.10
 
 # OpenAI product-content generation
 # Keep the real key only in .env or your deployment secret manager. Never commit it.

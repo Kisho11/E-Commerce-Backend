@@ -1,5 +1,5 @@
 import enum
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, Numeric, String, func
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, Numeric, String, func
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -29,6 +29,8 @@ class Order(Base):
     total_amount = Column(Numeric(10, 2), nullable=False)
     payment_status = Column(Enum(PaymentStatus), default=PaymentStatus.pending)
     payment_intent_id = Column(String, nullable=True)
+    checkout_cart_item_ids = Column(String, nullable=True)
+    stock_reserved = Column(Boolean, nullable=False, default=False)
     delivery_mode = Column(String, nullable=False, default="ship")
     delivery_note = Column(String, nullable=True)
     notes = Column(String, nullable=True)

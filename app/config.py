@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     # Stripe
     STRIPE_SECRET_KEY: str = "sk_test_placeholder"
     STRIPE_WEBHOOK_SECRET: str = ""
+    PAYMENT_CURRENCY: str = "gbp"
+    CHECKOUT_TAX_RATE: str = "0.10"
 
     # OpenAI product-content generation
     OPENAI_API_KEY: str = ""
@@ -116,6 +118,9 @@ class Settings(BaseSettings):
 
         if len(self.SECRET_KEY) < 32 and not self.DEBUG:
             raise ValueError("SECRET_KEY must be at least 32 characters long outside DEBUG mode.")
+
+        if not self.DEBUG and not self.STRIPE_WEBHOOK_SECRET:
+            raise ValueError("STRIPE_WEBHOOK_SECRET must be configured outside DEBUG mode.")
 
         parsed_database_url = urlparse(self.DATABASE_URL)
         is_local_sqlite = self.DATABASE_URL.startswith("sqlite")

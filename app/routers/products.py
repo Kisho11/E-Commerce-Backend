@@ -114,12 +114,18 @@ def get_products(
     if category_id:
         query = query.filter(Product.categories.any(Category.id == category_id))
     if search:
-        query = query.filter(
-            or_(
-                Product.name.ilike(f"%{search}%"),
-                cast(Product.description, String).ilike(f"%{search}%"),
+        for term in search.strip().split():
+            like_term = f"%{term}%"
+            query = query.filter(
+                or_(
+                    Product.name.ilike(like_term),
+                    Product.sku.ilike(like_term),
+                    cast(Product.description, String).ilike(like_term),
+                    cast(Product.key_features, String).ilike(like_term),
+                    cast(Product.additional_information, String).ilike(like_term),
+                    Product.categories.any(Category.name.ilike(like_term)),
+                )
             )
-        )
     if min_price is not None:
         query = query.filter(Product.price >= min_price)
     if max_price is not None:

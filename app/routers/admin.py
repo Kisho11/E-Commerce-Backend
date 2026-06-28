@@ -2,7 +2,7 @@ import re
 import secrets
 import string
 import unicodedata
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -11,6 +11,7 @@ from typing import List, Optional
 from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.address import Address
+from app.models.cart import Cart
 from app.models.order import Order, OrderStatus, PaymentStatus
 from app.models.product import Product
 from app.models.industry import Industry
@@ -50,7 +51,11 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 
 @router.get("/dashboard")
 def get_dashboard(db: Session = Depends(get_db), admin=Depends(get_current_admin)):
-    total_users = db.query(func.count(User.id)).filter(User.role == UserRole.user).scalar()
+    total_users = (
+        db.query(func.count(User.id))
+        .filter(User.role == UserRole.user, ~User.email.ilike("deleted-%@deleted.local"))
+        .scalar()
+    )
     total_customers = total_users
     total_orders = db.query(func.count(Order.id)).scalar()
     total_revenue = (
@@ -250,6 +255,111 @@ def delete_manager(manager_id: int, db: Session = Depends(get_db), admin=Depends
 
 # ── Customers ─────────────────────────────────────────────────────────────────
 
+class CustomerAddressUpdate(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    address_line1: Optional[str] = None
+    address_line2: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    postal_code: Optional[str] = None
+    country: Optional[str] = None
+
+
+class CustomerUpdate(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    is_active: Optional[bool] = None
+    address: Optional[CustomerAddressUpdate] = None
+
+
+def _format_customer_response(user: User, order_count=0, total_spent=0, last_order_date=None, address: Optional[Address] = None):
+    return {
+        "id": user.id,
+        "email": user.email,
+        "full_name": user.full_name,
+        "phone": user.phone,
+        "is_active": user.is_active,
+        "created_at": user.created_at,
+        "order_count": int(order_count or 0),
+        "total_spent": float(total_spent or 0),
+        "last_order_date": last_order_date,
+        "address": (
+            {
+                "id": address.id,
+                "full_name": address.full_name,
+                "phone": address.phone,
+                "address_line1": address.address_line1,
+                "address_line2": address.address_line2,
+                "city": address.city,
+                "state": address.state,
+                "postal_code": address.postal_code,
+                "country": address.country,
+                "is_default": address.is_default,
+            }
+            if address
+            else None
+        ),
+    }
+
+
+def _get_customer_summary(db: Session, customer_id: int):
+    row = (
+        db.query(
+            User,
+            func.count(Order.id).label("order_count"),
+            func.coalesce(func.sum(Order.total_amount), 0).label("total_spent"),
+            func.max(Order.created_at).label("last_order_date"),
+        )
+        .outerjoin(Order, Order.user_id == User.id)
+        .filter(User.id == customer_id, User.role == UserRole.user)
+        .group_by(User.id)
+        .first()
+    )
+    if not row:
+        return None
+    user, order_count, total_spent, last_order_date = row
+    address = (
+        db.query(Address)
+        .filter(Address.user_id == user.id)
+        .order_by(Address.is_default.desc(), Address.created_at.desc())
+        .first()
+    )
+    return _format_customer_response(user, order_count, total_spent, last_order_date, address)
+
+
+def _anonymize_customer_account(db: Session, user: User):
+    deleted_at = datetime.now(timezone.utc)
+    anonymized_email = f"deleted-customer-{user.id}-{int(deleted_at.timestamp())}@deleted.local"
+
+    cart = db.query(Cart).filter(Cart.user_id == user.id).first()
+    if cart:
+        db.delete(cart)
+
+    db.query(Review).filter(Review.user_id == user.id).delete(synchronize_session=False)
+
+    for address in db.query(Address).filter(Address.user_id == user.id).all():
+        address.full_name = "Deleted Customer"
+        address.phone = "Deleted"
+        address.address_line1 = "Deleted address"
+        address.address_line2 = None
+        address.city = "Deleted"
+        address.state = "Deleted"
+        address.postal_code = "Deleted"
+        address.country = "Deleted"
+        address.is_default = False
+
+    user.email = anonymized_email
+    user.full_name = "Deleted Customer"
+    user.phone = None
+    user.hashed_password = hash_password(secrets.token_urlsafe(32))
+    user.is_active = False
+    user.is_email_verified = False
+    user.must_reset_password = False
+    user.token_version += 1
+
+
 @router.get("/customers")
 def list_customers(
     page: int = Query(1, ge=1),
@@ -269,7 +379,7 @@ def list_customers(
             func.max(Order.created_at).label("last_order_date"),
         )
         .outerjoin(Order, Order.user_id == User.id)
-        .filter(User.role == UserRole.user)
+        .filter(User.role == UserRole.user, ~User.email.ilike("deleted-%@deleted.local"))
         .group_by(User.id)
     )
 
@@ -339,6 +449,137 @@ def list_customers(
     ]
 
     return {"items": items, "total": total, "page": page, "per_page": per_page}
+
+
+@router.put("/customers/{customer_id}")
+def update_customer(
+    customer_id: int,
+    body: CustomerUpdate,
+    db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
+):
+    user = db.query(User).filter(User.id == customer_id, User.role == UserRole.user).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    updates = body.model_dump(exclude_unset=True)
+    changed_fields = []
+
+    if "email" in updates and updates["email"] is not None:
+        email = updates["email"].strip().lower()
+        if not email:
+            raise HTTPException(status_code=422, detail="Email cannot be empty")
+        existing = db.query(User).filter(User.email == email, User.id != customer_id).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="Email already registered")
+        user.email = email
+        user.token_version += 1
+        changed_fields.append("email")
+
+    if "full_name" in updates and updates["full_name"] is not None:
+        full_name = updates["full_name"].strip()
+        if not full_name:
+            raise HTTPException(status_code=422, detail="Full name cannot be empty")
+        user.full_name = full_name
+        changed_fields.append("full_name")
+
+    if "phone" in updates:
+        user.phone = updates["phone"].strip() if updates["phone"] else None
+        changed_fields.append("phone")
+
+    if "is_active" in updates and updates["is_active"] is not None:
+        user.is_active = bool(updates["is_active"])
+        if not user.is_active:
+            user.token_version += 1
+        changed_fields.append("is_active")
+
+    if "address" in updates and updates["address"] is not None:
+        address_data = updates["address"]
+        address = (
+            db.query(Address)
+            .filter(Address.user_id == user.id)
+            .order_by(Address.is_default.desc(), Address.created_at.desc())
+            .first()
+        )
+        address_updates = {key: value for key, value in address_data.items() if value is not None}
+
+        if address_updates:
+            if not address:
+                required_fields = {
+                    "full_name": address_updates.get("full_name") or user.full_name,
+                    "phone": address_updates.get("phone") or user.phone,
+                    "address_line1": address_updates.get("address_line1"),
+                    "city": address_updates.get("city"),
+                    "state": address_updates.get("state"),
+                    "postal_code": address_updates.get("postal_code"),
+                    "country": address_updates.get("country") or "US",
+                }
+                missing = [key for key, value in required_fields.items() if not value]
+                if missing:
+                    raise HTTPException(status_code=422, detail=f"Missing address fields: {', '.join(missing)}")
+                address = Address(
+                    user_id=user.id,
+                    full_name=required_fields["full_name"],
+                    phone=required_fields["phone"],
+                    address_line1=required_fields["address_line1"],
+                    address_line2=address_updates.get("address_line2"),
+                    city=required_fields["city"],
+                    state=required_fields["state"],
+                    postal_code=required_fields["postal_code"],
+                    country=required_fields["country"],
+                    is_default=True,
+                )
+                db.add(address)
+            else:
+                for field, value in address_updates.items():
+                    setattr(address, field, value.strip() if isinstance(value, str) else value)
+                if not address.full_name:
+                    address.full_name = user.full_name
+                if not address.phone and user.phone:
+                    address.phone = user.phone
+            changed_fields.append("address")
+
+    if not changed_fields:
+        summary = _get_customer_summary(db, customer_id)
+        if not summary:
+            raise HTTPException(status_code=404, detail="Customer not found")
+        return summary
+
+    log_admin_action(
+        db,
+        admin_user_id=admin.id,
+        action="update_customer",
+        target_user_id=user.id,
+        details=f"Updated fields: {', '.join(sorted(set(changed_fields)))}",
+    )
+    db.commit()
+
+    summary = _get_customer_summary(db, customer_id)
+    if not summary:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    return summary
+
+
+@router.delete("/customers/{customer_id}", status_code=204)
+def delete_customer(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
+):
+    user = db.query(User).filter(User.id == customer_id, User.role == UserRole.user).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    original_email = user.email
+    log_admin_action(
+        db,
+        admin_user_id=admin.id,
+        action="delete_customer",
+        target_user_id=user.id,
+        details=f"Anonymized and deactivated customer {original_email}",
+    )
+    _anonymize_customer_account(db, user)
+    db.commit()
 
 
 @router.get("/customers/{customer_id}/orders")

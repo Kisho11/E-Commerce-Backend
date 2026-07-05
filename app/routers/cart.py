@@ -7,6 +7,11 @@ from app.models.cart import Cart, CartItem
 from app.models.product import Product
 from app.schemas.cart import CartItemCreate, CartItemUpdate, CartResponse
 from app.core.dependencies import get_current_user
+from app.utils.variant_pricing import (
+    normalize_attributes,
+    normalize_product_attributes,
+    resolve_product_unit_price,
+)
 
 router = APIRouter(prefix="/cart", tags=["Cart"])
 
@@ -25,11 +30,19 @@ def get_or_create_cart(user, db: Session) -> Cart:
     return cart
 
 
+def cart_item_matches(item: CartItem, product_id: int, selected_attributes: dict) -> bool:
+    return (
+        item.product_id == product_id
+        and normalize_attributes(item.selected_attributes or {}) == selected_attributes
+    )
+
+
 def build_cart_response(cart: Cart) -> dict:
     items = []
     total = Decimal("0")
     for item in cart.items:
-        price = item.product.sale_price or item.product.price
+        selected_attributes = normalize_attributes(item.selected_attributes or {})
+        price = resolve_product_unit_price(item.product, selected_attributes)
         subtotal = price * item.quantity
         total += subtotal
         # Attach computed fields not on the model
@@ -40,6 +53,8 @@ def build_cart_response(cart: Cart) -> dict:
                 "id": item.id,
                 "product_id": item.product_id,
                 "quantity": item.quantity,
+                "selected_attributes": selected_attributes,
+                "unit_price": price,
                 "product": item.product,
                 "subtotal": subtotal,
             }
@@ -68,10 +83,14 @@ def add_to_cart(
         raise HTTPException(status_code=404, detail="Product not found")
 
     cart = get_or_create_cart(current_user, db)
-    existing = (
-        db.query(CartItem)
-        .filter(CartItem.cart_id == cart.id, CartItem.product_id == item_data.product_id)
-        .first()
+    selected_attributes = normalize_product_attributes(product, item_data.selected_attributes or {})
+    existing = next(
+        (
+            item
+            for item in cart.items
+            if cart_item_matches(item, item_data.product_id, selected_attributes)
+        ),
+        None,
     )
 
     new_qty = (existing.quantity if existing else 0) + item_data.quantity
@@ -81,7 +100,14 @@ def add_to_cart(
     if existing:
         existing.quantity = new_qty
     else:
-        db.add(CartItem(cart_id=cart.id, **item_data.model_dump()))
+        db.add(
+            CartItem(
+                cart_id=cart.id,
+                product_id=item_data.product_id,
+                quantity=item_data.quantity,
+                selected_attributes=selected_attributes or None,
+            )
+        )
     mark_cart_activity(cart)
 
     db.commit()

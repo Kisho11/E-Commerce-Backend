@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, func
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, func
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -23,6 +23,7 @@ class CartItem(Base):
     cart_id = Column(Integer, ForeignKey("carts.id"), nullable=False)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
     quantity = Column(Integer, default=1, nullable=False)
+    selected_attributes = Column(JSON, nullable=True)
 
     cart = relationship("Cart", back_populates="items")
     product = relationship("Product", back_populates="cart_items")

@@ -12,6 +12,7 @@ from app.models.product import Product
 from app.schemas.order import OrderCreate, OrderResponse, OrderStatusUpdate
 from app.core.dependencies import get_current_user, get_current_admin
 from app.config import settings
+from app.utils.variant_pricing import normalize_attributes, resolve_product_unit_price
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 MONEY_QUANT = Decimal("0.01")
@@ -96,7 +97,7 @@ def create_order(
             raise HTTPException(
                 status_code=400, detail=f"Insufficient stock for '{product.name}'"
             )
-        price = product.sale_price or product.price
+        price = resolve_product_unit_price(product, item.selected_attributes)
         subtotal += price * item.quantity
 
     total = (subtotal * (Decimal("1") + get_checkout_tax_rate())).quantize(MONEY_QUANT)
@@ -120,7 +121,8 @@ def create_order(
 
     for item in selected_cart_items:
         product = products_by_id[item.product_id]
-        price = product.sale_price or product.price
+        selected_attributes = normalize_attributes(item.selected_attributes or {})
+        price = resolve_product_unit_price(product, selected_attributes)
         line_total = price * item.quantity
         db.add(
             OrderItem(
@@ -129,6 +131,7 @@ def create_order(
                 quantity=item.quantity,
                 unit_price=price,
                 total_price=line_total,
+                selected_attributes=selected_attributes or None,
             )
         )
         if product.stock_quantity > 0:

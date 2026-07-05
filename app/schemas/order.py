@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import List, Optional
+from typing import Dict, List, Optional
 from pydantic import BaseModel
 from app.models.order import OrderStatus, PaymentStatus
 from app.schemas.address import AddressResponse
@@ -13,6 +13,7 @@ class OrderItemResponse(BaseModel):
     quantity: int
     unit_price: Decimal
     total_price: Decimal
+    selected_attributes: Optional[Dict[str, str]] = None
 
     model_config = {"from_attributes": True}
 

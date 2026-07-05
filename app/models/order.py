@@ -1,5 +1,5 @@
 import enum
-from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, Numeric, String, func
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, JSON, Numeric, String, func
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -51,6 +51,7 @@ class OrderItem(Base):
     quantity = Column(Integer, nullable=False)
     unit_price = Column(Numeric(10, 2), nullable=False)
     total_price = Column(Numeric(10, 2), nullable=False)
+    selected_attributes = Column(JSON, nullable=True)
 
     order = relationship("Order", back_populates="items")
     product = relationship("Product", back_populates="order_items")

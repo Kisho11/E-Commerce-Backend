@@ -1,5 +1,5 @@
 from decimal import Decimal
-from typing import List
+from typing import Dict, List, Optional
 from pydantic import BaseModel
 from app.schemas.product import ProductResponse
 
@@ -7,6 +7,7 @@ from app.schemas.product import ProductResponse
 class CartItemCreate(BaseModel):
     product_id: int
     quantity: int = 1
+    selected_attributes: Optional[Dict[str, str]] = None
 
 
 class CartItemUpdate(BaseModel):
@@ -17,6 +18,8 @@ class CartItemResponse(BaseModel):
     id: int
     product_id: int
     quantity: int
+    selected_attributes: Optional[Dict[str, str]] = None
+    unit_price: Decimal
     product: ProductResponse
     subtotal: Decimal
 

@@ -116,6 +116,26 @@ def ensure_runtime_schema_updates():
                 if "already exists" not in str(error).lower():
                     raise
 
+    if "cart_items" in table_names:
+        cart_item_columns = {column["name"] for column in inspector.get_columns("cart_items")}
+        if "selected_attributes" not in cart_item_columns:
+            try:
+                with engine.begin() as connection:
+                    connection.execute(text("ALTER TABLE cart_items ADD COLUMN selected_attributes JSON"))
+            except (OperationalError, ProgrammingError) as error:
+                if "already exists" not in str(error).lower():
+                    raise
+
+    if "order_items" in table_names:
+        order_item_columns = {column["name"] for column in inspector.get_columns("order_items")}
+        if "selected_attributes" not in order_item_columns:
+            try:
+                with engine.begin() as connection:
+                    connection.execute(text("ALTER TABLE order_items ADD COLUMN selected_attributes JSON"))
+            except (OperationalError, ProgrammingError) as error:
+                if "already exists" not in str(error).lower():
+                    raise
+
     if "products" not in table_names:
         return
 

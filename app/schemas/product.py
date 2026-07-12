@@ -1,8 +1,28 @@
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from app.models.product import ProductType
+
+MONEY_QUANT = Decimal("0.01")
+
+
+def validate_money_scale(value: Optional[Decimal], field_label: str, allow_negative: bool = False) -> Optional[Decimal]:
+    if value is None:
+        return value
+
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        raise ValueError(f"{field_label} must be a valid amount")
+
+    if not allow_negative and amount < 0:
+        raise ValueError(f"{field_label} cannot be negative")
+
+    if amount != amount.quantize(MONEY_QUANT):
+        raise ValueError(f"{field_label} must have no more than 2 decimal places")
+
+    return amount
 
 
 class ProductImageResponse(BaseModel):
@@ -20,6 +40,11 @@ class ProductVariantBase(BaseModel):
     price_modifier: Decimal = Decimal("0")
     stock_quantity: int = 0
     sku_suffix: Optional[str] = None
+
+    @field_validator("price_modifier")
+    @classmethod
+    def validate_price_modifier(cls, value):
+        return validate_money_scale(value, "Variant price modifier", allow_negative=True)
 
 
 class ProductVariantCreate(ProductVariantBase):
@@ -73,6 +98,16 @@ class ProductBase(BaseModel):
     is_active: bool = True
     is_featured: bool = False
 
+    @field_validator("price")
+    @classmethod
+    def validate_price(cls, value):
+        return validate_money_scale(value, "Price")
+
+    @field_validator("sale_price")
+    @classmethod
+    def validate_sale_price(cls, value):
+        return validate_money_scale(value, "Sale price")
+
 
 class ProductCreate(ProductBase):
     category_ids: List[int] = []
@@ -97,6 +132,16 @@ class ProductUpdate(BaseModel):
     is_active: Optional[bool] = None
     is_featured: Optional[bool] = None
     variant_groups: Optional[List[ProductVariantGroupCreate]] = None
+
+    @field_validator("price")
+    @classmethod
+    def validate_price(cls, value):
+        return validate_money_scale(value, "Price")
+
+    @field_validator("sale_price")
+    @classmethod
+    def validate_sale_price(cls, value):
+        return validate_money_scale(value, "Sale price")
 
 
 class ProductResponse(ProductBase):

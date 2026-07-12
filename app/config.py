@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: str = "sk_test_placeholder"
     STRIPE_WEBHOOK_SECRET: str = ""
     PAYMENT_CURRENCY: str = "gbp"
-    CHECKOUT_TAX_RATE: str = "0.10"
+    CHECKOUT_TAX_RATE: str = "0.20"
 
     # OpenAI product-content generation
     OPENAI_API_KEY: str = ""

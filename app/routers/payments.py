@@ -10,10 +10,12 @@ from app.database import get_db
 from app.models.cart import Cart, CartItem
 from app.models.order import Order, OrderStatus, PaymentStatus
 from app.models.product import Product
+from app.models.inventory import MovementType
 from app.schemas.order import OrderResponse
 from app.core.dependencies import get_current_user
 from app.config import settings
 from app.utils.email import send_order_confirmation_email
+from app.utils.variant_pricing import adjust_stock_quantity, ensure_stock_available
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
@@ -95,13 +97,21 @@ def intent_matches_order(intent, order: Order) -> bool:
     )
 
 
-def release_reserved_stock(order: Order) -> None:
+def release_reserved_stock(order: Order, db: Session | None = None) -> None:
     if not order.stock_reserved:
         return
 
     for item in order.items:
         if item.product:
-            item.product.stock_quantity += item.quantity
+            adjust_stock_quantity(
+                item.product,
+                item.selected_attributes or {},
+                item.quantity,
+                db=db,
+                movement_type=MovementType.return_,
+                reason=f"Order #{order.id} payment failed",
+                actor="System",
+            )
     order.stock_reserved = False
 
 
@@ -135,8 +145,20 @@ def finalize_paid_order(
         stock_reserved = False
         for item in order.items:
             product = products_by_id.get(item.product_id)
-            if product and product.stock_quantity > 0:
-                product.stock_quantity = max(product.stock_quantity - item.quantity, 0)
+            if product:
+                try:
+                    ensure_stock_available(product, item.selected_attributes or {}, item.quantity)
+                except ValueError:
+                    raise HTTPException(status_code=400, detail=f"Insufficient stock for '{product.name}'")
+                adjust_stock_quantity(
+                    product,
+                    item.selected_attributes or {},
+                    -item.quantity,
+                    db=db,
+                    movement_type=MovementType.sale,
+                    reason=f"Order #{order.id} payment stock reserved",
+                    actor="System",
+                )
                 stock_reserved = True
         order.stock_reserved = stock_reserved
 
@@ -174,7 +196,7 @@ def finalize_paid_order(
 
 def mark_order_payment_failed(order: Order, db: Session) -> Order:
     if order.payment_status != PaymentStatus.paid:
-        release_reserved_stock(order)
+        release_reserved_stock(order, db=db)
         order.payment_status = PaymentStatus.failed
         order.status = OrderStatus.cancelled
         db.commit()

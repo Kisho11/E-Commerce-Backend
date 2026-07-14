@@ -189,6 +189,8 @@ def create_product(
     data = product_data.model_dump(exclude={"category_ids", "variant_groups"})
     data["name"] = name
     data["product_type"] = _infer_product_type(product_data.product_type, product_data.variant_groups)
+    if data["product_type"] == ProductType.variable:
+        data["stock_quantity"] = 0
     product = Product(**data, slug=slug)
     db.add(product)
     db.flush()
@@ -231,6 +233,9 @@ def update_product(
         data["product_type"] = _infer_product_type(update_data.product_type, update_data.variant_groups)
     elif update_data.product_type == ProductType.custom:
         data["product_type"] = ProductType.custom
+    next_product_type = data.get("product_type", product.product_type)
+    if next_product_type == ProductType.variable:
+        data["stock_quantity"] = 0
     for field, value in data.items():
         setattr(product, field, value)
 

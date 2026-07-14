@@ -9,10 +9,16 @@ from app.models.order import Order, OrderItem, OrderStatus, PaymentStatus
 from app.models.cart import Cart
 from app.models.address import Address
 from app.models.product import Product
+from app.models.inventory import MovementType
 from app.schemas.order import OrderCreate, OrderResponse, OrderStatusUpdate
 from app.core.dependencies import get_current_user, get_current_admin
 from app.config import settings
-from app.utils.variant_pricing import normalize_attributes, resolve_product_unit_price
+from app.utils.variant_pricing import (
+    adjust_stock_quantity,
+    ensure_stock_available,
+    normalize_attributes,
+    resolve_product_unit_price,
+)
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 MONEY_QUANT = Decimal("0.01")
@@ -22,13 +28,21 @@ def get_checkout_tax_rate() -> Decimal:
     return Decimal(str(settings.CHECKOUT_TAX_RATE or "0"))
 
 
-def release_reserved_stock(order: Order) -> None:
+def release_reserved_stock(order: Order, db: Session | None = None, actor: str | None = None) -> None:
     if not order.stock_reserved:
         return
 
     for item in order.items:
         if item.product:
-            item.product.stock_quantity += item.quantity
+            adjust_stock_quantity(
+                item.product,
+                item.selected_attributes or {},
+                item.quantity,
+                db=db,
+                movement_type=MovementType.return_,
+                reason=f"Order #{order.id} cancelled",
+                actor=actor,
+            )
     order.stock_reserved = False
 
 
@@ -93,7 +107,9 @@ def create_order(
             raise HTTPException(
                 status_code=400, detail=f"Product '{product.name}' is no longer available"
             )
-        if product.stock_quantity > 0 and product.stock_quantity < item.quantity:
+        try:
+            ensure_stock_available(product, item.selected_attributes or {}, item.quantity)
+        except ValueError:
             raise HTTPException(
                 status_code=400, detail=f"Insufficient stock for '{product.name}'"
             )
@@ -134,9 +150,16 @@ def create_order(
                 selected_attributes=selected_attributes or None,
             )
         )
-        if product.stock_quantity > 0:
-            product.stock_quantity -= item.quantity
-            stock_reserved = True
+        adjust_stock_quantity(
+            product,
+            selected_attributes,
+            -item.quantity,
+            db=db,
+            movement_type=MovementType.sale,
+            reason=f"Order #{order.id} stock reserved",
+            actor=current_user.full_name,
+        )
+        stock_reserved = True
 
     order.stock_reserved = stock_reserved
 
@@ -189,7 +212,7 @@ def cancel_order(
     if order.status not in [OrderStatus.pending, OrderStatus.confirmed]:
         raise HTTPException(status_code=400, detail="Order cannot be cancelled at this stage")
 
-    release_reserved_stock(order)
+    release_reserved_stock(order, db=db, actor=current_user.full_name)
     order.status = OrderStatus.cancelled
     db.commit()
     db.refresh(order)

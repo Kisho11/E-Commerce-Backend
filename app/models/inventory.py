@@ -67,3 +67,73 @@ class StockMovement(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     inventory = relationship("Inventory", back_populates="movements")
+
+
+class VariantInventory(Base):
+    __tablename__ = "variant_inventory"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    variant_id = Column(Integer, ForeignKey("product_variants.id", ondelete="CASCADE"), unique=True, nullable=False)
+    on_hand = Column(Integer, default=0, nullable=False)
+    reserved = Column(Integer, default=0, nullable=False)
+    reorder_level = Column(Integer, default=10)
+    reorder_qty = Column(Integer, default=50)
+    avg_daily_usage = Column(Numeric(8, 2), default=0)
+    location = Column(String, nullable=True)
+    supplier = Column(String, nullable=True)
+    lead_time_days = Column(Integer, default=7)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    variant = relationship("ProductVariant")
+    product = relationship("Product")
+    movements = relationship(
+        "VariantStockMovement",
+        back_populates="inventory",
+        cascade="all, delete-orphan",
+        order_by="VariantStockMovement.created_at.desc()",
+    )
+
+    @property
+    def available(self):
+        return max(0, self.on_hand - self.reserved)
+
+    @property
+    def status(self):
+        if self.on_hand <= 0:
+            return "Out of Stock"
+        if self.on_hand <= self.reorder_level:
+            return "Low Stock"
+        return "Healthy"
+
+    @property
+    def coverage_days(self):
+        if not self.avg_daily_usage or self.avg_daily_usage == 0:
+            return None
+        return round(self.available / float(self.avg_daily_usage))
+
+    @property
+    def product_name(self):
+        return self.product.name if self.product else None
+
+    @property
+    def variant_label(self):
+        return self.variant.value if self.variant else None
+
+
+class VariantStockMovement(Base):
+    __tablename__ = "variant_stock_movements"
+
+    id = Column(Integer, primary_key=True, index=True)
+    inventory_id = Column(Integer, ForeignKey("variant_inventory.id", ondelete="CASCADE"), nullable=False)
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    variant_id = Column(Integer, ForeignKey("product_variants.id", ondelete="CASCADE"), nullable=False)
+    movement_type = Column(Enum(MovementType), nullable=False)
+    qty_change = Column(Integer, nullable=False)
+    qty_before = Column(Integer, nullable=False)
+    qty_after = Column(Integer, nullable=False)
+    reason = Column(String, nullable=True)
+    actor = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    inventory = relationship("VariantInventory", back_populates="movements")

@@ -26,6 +26,10 @@ class StockMovementResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class VariantStockMovementResponse(StockMovementResponse):
+    variant_id: int
+
+
 class InventoryResponse(BaseModel):
     id: int
     product_id: int
@@ -43,6 +47,29 @@ class InventoryResponse(BaseModel):
     coverage_days: Optional[int]
     updated_at: Optional[datetime]
     movements: List[StockMovementResponse] = []
+
+    model_config = {"from_attributes": True}
+
+
+class VariantInventoryResponse(BaseModel):
+    id: int
+    product_id: int
+    variant_id: int
+    product_name: Optional[str] = None
+    variant_label: Optional[str] = None
+    on_hand: int
+    reserved: int
+    available: int
+    reorder_level: int
+    reorder_qty: int
+    avg_daily_usage: Optional[Decimal]
+    location: Optional[str]
+    supplier: Optional[str]
+    lead_time_days: int
+    status: str
+    coverage_days: Optional[int]
+    updated_at: Optional[datetime]
+    movements: List[VariantStockMovementResponse] = []
 
     model_config = {"from_attributes": True}
 

@@ -8,6 +8,7 @@ from app.models.product import Product
 from app.schemas.cart import CartItemCreate, CartItemUpdate, CartResponse
 from app.core.dependencies import get_current_user
 from app.utils.variant_pricing import (
+    ensure_stock_available,
     normalize_attributes,
     normalize_product_attributes,
     resolve_product_unit_price,
@@ -94,7 +95,9 @@ def add_to_cart(
     )
 
     new_qty = (existing.quantity if existing else 0) + item_data.quantity
-    if product.stock_quantity > 0 and product.stock_quantity < new_qty:
+    try:
+        ensure_stock_available(product, selected_attributes, new_qty)
+    except ValueError:
         raise HTTPException(status_code=400, detail="Insufficient stock")
 
     if existing:
@@ -134,7 +137,9 @@ def update_cart_item(
     if update_data.quantity <= 0:
         db.delete(item)
     else:
-        if item.product.stock_quantity > 0 and item.product.stock_quantity < update_data.quantity:
+        try:
+            ensure_stock_available(item.product, item.selected_attributes or {}, update_data.quantity)
+        except ValueError:
             raise HTTPException(status_code=400, detail="Insufficient stock")
         item.quantity = update_data.quantity
     mark_cart_activity(cart)

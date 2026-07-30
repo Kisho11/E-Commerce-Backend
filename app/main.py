@@ -180,15 +180,6 @@ async def stop_background_services():
 
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.TRUSTED_HOSTS or ["localhost"])
 
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 CSRF_EXEMPT_PATHS = {
     "/",
     "/health",
@@ -232,6 +223,18 @@ async def add_security_headers(request, call_next):
     if request.url.scheme == "https":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
+
+# CORS is registered last so it ends up outermost in the middleware stack
+# (Starlette's add_middleware prepends, so the last-registered middleware runs
+# first on the way in / last on the way out) — this ensures CORS headers are
+# attached even to responses short-circuited by enforce_csrf or other middleware.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Serve uploaded files as static assets
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)

@@ -414,4 +414,4 @@ def logout(
     db.commit()
     response.delete_cookie(settings.ACCESS_TOKEN_COOKIE_NAME, path="/")
     response.delete_cookie(settings.REFRESH_TOKEN_COOKIE_NAME, path="/api/v1/auth")
-    response.delete_cookie(settings.CSRF_COOKIE_NAME, path="/")
+    response.delete_cookie(settings.CSRF_COOKIE_NAME, path="/", domain=settings.COOKIE_DOMAIN)

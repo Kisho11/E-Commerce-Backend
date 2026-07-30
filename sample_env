@@ -54,6 +54,11 @@ MAX_VIDEO_FILE_SIZE=20971520
 ALLOWED_ORIGINS=["http://localhost:3000","http://localhost:5173"]
 TRUSTED_HOSTS=["localhost","127.0.0.1"]
 ENABLE_DOCS=false
+# Set this in production if the frontend and API are served from different
+# subdomains of the same site (e.g. www.example.com frontend + example.com API).
+# Without it, the CSRF cookie is host-only and unreadable by JS on the other
+# subdomain, which 403s every POST/PUT/PATCH/DELETE request.
+# COOKIE_DOMAIN=.example.com
 
 # ── Rate Limiting & Account Lockout ───────────────────────────────────────────
 AUTH_RATE_LIMIT_WINDOW_SECONDS=60

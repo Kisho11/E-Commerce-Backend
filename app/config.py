@@ -3,7 +3,7 @@ import secrets
 from urllib.parse import urlparse
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 
 
 class Settings(BaseSettings):
@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     CSRF_HEADER_NAME: str = "X-CSRF-Token"
     COOKIE_SAMESITE: str = "lax"
     COOKIE_SECURE: bool = False
+    COOKIE_DOMAIN: Optional[str] = None
 
     # Stripe
     STRIPE_SECRET_KEY: str = "sk_test_placeholder"

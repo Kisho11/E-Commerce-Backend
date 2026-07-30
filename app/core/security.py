@@ -68,4 +68,5 @@ def csrf_cookie_settings() -> dict:
         "secure": settings.COOKIE_SECURE,
         "samesite": settings.COOKIE_SAMESITE,
         "path": "/",
+        "domain": settings.COOKIE_DOMAIN,
     }

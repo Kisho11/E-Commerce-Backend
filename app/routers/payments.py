@@ -239,6 +239,7 @@ def create_payment_intent(
         intent = stripe.PaymentIntent.create(
             amount=stripe_amount_for_order(order),
             currency=stripe_currency(),
+            automatic_payment_methods={"enabled": True},
             metadata={"order_id": str(order.id), "user_id": str(current_user.id)},
         )
         order.payment_intent_id = intent.id

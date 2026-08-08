@@ -112,6 +112,7 @@ class ProductBase(BaseModel):
 class ProductCreate(ProductBase):
     category_ids: List[int] = []
     variant_groups: List[ProductVariantGroupCreate] = []
+    related_product_ids: List[int] = []
 
 
 class ProductUpdate(BaseModel):
@@ -132,6 +133,7 @@ class ProductUpdate(BaseModel):
     is_active: Optional[bool] = None
     is_featured: Optional[bool] = None
     variant_groups: Optional[List[ProductVariantGroupCreate]] = None
+    related_product_ids: Optional[List[int]] = None
 
     @field_validator("price")
     @classmethod
@@ -150,6 +152,7 @@ class ProductResponse(ProductBase):
     categories: List[CategorySlim] = []
     images: List[ProductImageResponse] = []
     variant_groups: List[ProductVariantGroupResponse] = []
+    related_product_ids: List[int] = []
     avg_rating: Optional[float] = None
     review_count: int = 0
     created_at: datetime

@@ -3,7 +3,7 @@ from app.models.user import User, AdminAuditLog
 from app.models.address import Address
 from app.models.category import Category
 from app.models.industry import Industry
-from app.models.product import Product, ProductImage, ProductVariantGroup, ProductVariant
+from app.models.product import Product, ProductImage, ProductRelatedProduct, ProductVariantGroup, ProductVariant
 from app.models.inventory import Inventory, StockMovement, VariantInventory, VariantStockMovement
 from app.models.cart import Cart, CartItem
 from app.models.order import Order, OrderItem
@@ -19,6 +19,7 @@ __all__ = [
     "Industry",
     "Product",
     "ProductImage",
+    "ProductRelatedProduct",
     "ProductVariantGroup",
     "ProductVariant",
     "Inventory",

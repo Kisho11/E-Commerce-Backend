@@ -53,6 +53,28 @@ class Product(Base):
     order_items = relationship("OrderItem", back_populates="product")
     reviews = relationship("Review", back_populates="product")
     inventory = relationship("Inventory", back_populates="product", uselist=False, cascade="all, delete-orphan")
+    related_product_links = relationship(
+        "ProductRelatedProduct",
+        foreign_keys="ProductRelatedProduct.product_id",
+        back_populates="product",
+        cascade="all, delete-orphan",
+        order_by="ProductRelatedProduct.sort_order",
+    )
+
+    @property
+    def related_product_ids(self):
+        return [link.related_product_id for link in self.related_product_links]
+
+
+class ProductRelatedProduct(Base):
+    __tablename__ = "product_related_products"
+
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), primary_key=True)
+    related_product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), primary_key=True)
+    sort_order = Column(Integer, default=0, nullable=False)
+
+    product = relationship("Product", foreign_keys=[product_id], back_populates="related_product_links")
+    related_product = relationship("Product", foreign_keys=[related_product_id])
 
 
 class ProductImage(Base):

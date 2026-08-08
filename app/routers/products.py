@@ -4,13 +4,13 @@ from sqlalchemy import func, or_, cast, String
 from typing import List, Optional
 from slugify import slugify
 from app.database import get_db
-from app.models.product import Product, ProductImage, ProductVariantGroup, ProductVariant, ProductType
+from app.models.product import Product, ProductImage, ProductRelatedProduct, ProductVariantGroup, ProductVariant, ProductType
 from app.models.category import Category
 from app.models.review import Review
 from app.schemas.product import (
     ProductCreate, ProductUpdate, ProductResponse, ProductListResponse,
 )
-from app.core.dependencies import get_current_admin
+from app.core.dependencies import get_current_manager
 from app.utils.file_upload import save_upload
 
 router = APIRouter(prefix="/products", tags=["Products"])
@@ -61,6 +61,47 @@ def attach_rating(product, db: Session):
 def _set_categories(product: Product, category_ids: List[int], db: Session):
     cats = db.query(Category).filter(Category.id.in_(category_ids)).all()
     product.categories = cats
+
+
+def _dedupe_int_ids(ids: Optional[List[int]]) -> List[int]:
+    seen = set()
+    normalized = []
+    for value in ids or []:
+        try:
+            product_id = int(value)
+        except (TypeError, ValueError):
+            continue
+        if product_id > 0 and product_id not in seen:
+            seen.add(product_id)
+            normalized.append(product_id)
+    return normalized
+
+
+def _set_related_products(product: Product, related_product_ids: Optional[List[int]], db: Session):
+    normalized_ids = [product_id for product_id in _dedupe_int_ids(related_product_ids) if product_id != product.id]
+    for link in list(product.related_product_links):
+        db.delete(link)
+    db.flush()
+
+    if not normalized_ids:
+        return
+
+    found_ids = {
+        row[0]
+        for row in db.query(Product.id)
+        .filter(Product.id.in_(normalized_ids), Product.is_active == True)
+        .all()
+    }
+    missing_ids = [product_id for product_id in normalized_ids if product_id not in found_ids]
+    if missing_ids:
+        raise HTTPException(status_code=422, detail=f"Related product not found: {missing_ids[0]}")
+
+    for sort_order, related_product_id in enumerate(normalized_ids):
+        db.add(ProductRelatedProduct(
+            product_id=product.id,
+            related_product_id=related_product_id,
+            sort_order=sort_order,
+        ))
 
 
 def _set_variant_groups(product: Product, variant_groups_data: list, db: Session):
@@ -178,7 +219,7 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
 def create_product(
     product_data: ProductCreate,
     db: Session = Depends(get_db),
-    admin=Depends(get_current_admin),
+    manager=Depends(get_current_manager),
 ):
     name = product_data.name.strip()
     if not name:
@@ -186,7 +227,7 @@ def create_product(
     if product_data.is_active:
         ensure_unique_product_name(db, name)
     slug = make_unique_slug(name, db)
-    data = product_data.model_dump(exclude={"category_ids", "variant_groups"})
+    data = product_data.model_dump(exclude={"category_ids", "variant_groups", "related_product_ids"})
     data["name"] = name
     data["product_type"] = _infer_product_type(product_data.product_type, product_data.variant_groups)
     if data["product_type"] == ProductType.variable:
@@ -199,6 +240,7 @@ def create_product(
         _set_categories(product, product_data.category_ids, db)
     if product_data.variant_groups:
         _set_variant_groups(product, product_data.variant_groups, db)
+    _set_related_products(product, product_data.related_product_ids, db)
 
     db.commit()
     db.refresh(product)
@@ -211,13 +253,13 @@ def update_product(
     product_id: int,
     update_data: ProductUpdate,
     db: Session = Depends(get_db),
-    admin=Depends(get_current_admin),
+    manager=Depends(get_current_manager),
 ):
     product = db.query(Product).filter(Product.id == product_id).first()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    data = update_data.model_dump(exclude_unset=True, exclude={"category_ids", "variant_groups"})
+    data = update_data.model_dump(exclude_unset=True, exclude={"category_ids", "variant_groups", "related_product_ids"})
     candidate_name = data.get("name", product.name)
     if candidate_name is not None:
         candidate_name = candidate_name.strip()
@@ -243,6 +285,8 @@ def update_product(
         _set_categories(product, update_data.category_ids, db)
     if update_data.variant_groups is not None:
         _set_variant_groups(product, update_data.variant_groups, db)
+    if update_data.related_product_ids is not None:
+        _set_related_products(product, update_data.related_product_ids, db)
 
     db.commit()
     db.refresh(product)
@@ -251,7 +295,7 @@ def update_product(
 
 
 @router.delete("/{product_id}", status_code=204)
-def delete_product(product_id: int, db: Session = Depends(get_db), admin=Depends(get_current_admin)):
+def delete_product(product_id: int, db: Session = Depends(get_db), manager=Depends(get_current_manager)):
     product = db.query(Product).filter(Product.id == product_id).first()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -268,7 +312,7 @@ async def upload_product_image(
     is_primary: bool = False,
     variant_tag: Optional[str] = None,
     db: Session = Depends(get_db),
-    admin=Depends(get_current_admin),
+    manager=Depends(get_current_manager),
 ):
     product = db.query(Product).filter(Product.id == product_id).first()
     if not product:
@@ -297,7 +341,7 @@ def delete_product_image(
     product_id: int,
     image_id: int,
     db: Session = Depends(get_db),
-    admin=Depends(get_current_admin),
+    manager=Depends(get_current_manager),
 ):
     img = db.query(ProductImage).filter(
         ProductImage.id == image_id, ProductImage.product_id == product_id

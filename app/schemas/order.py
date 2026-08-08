@@ -35,6 +35,12 @@ class OrderResponse(BaseModel):
     user_id: int
     status: OrderStatus
     total_amount: Decimal
+    subtotal_amount: Optional[Decimal] = None
+    discount_percentage: Decimal = Decimal("0")
+    discount_amount: Decimal = Decimal("0")
+    tax_rate: Decimal = Decimal("0")
+    tax_amount: Decimal = Decimal("0")
+    shipping_fee: Decimal = Decimal("0")
     payment_status: PaymentStatus
     payment_intent_id: Optional[str] = None
     delivery_mode: str = "ship"

@@ -8,6 +8,7 @@ from app.database import get_db
 from app.models.order import Order, OrderItem, OrderStatus, PaymentStatus
 from app.models.cart import Cart
 from app.models.address import Address
+from app.models.marketing import MarketingBanner
 from app.models.product import Product
 from app.models.inventory import MovementType
 from app.schemas.order import OrderCreate, OrderResponse, OrderStatusUpdate
@@ -26,6 +27,14 @@ MONEY_QUANT = Decimal("0.01")
 
 def get_checkout_tax_rate() -> Decimal:
     return Decimal(str(settings.CHECKOUT_TAX_RATE or "0"))
+
+
+def get_global_discount_percentage(db: Session) -> Decimal:
+    marketing_settings = db.query(MarketingBanner).order_by(MarketingBanner.id.asc()).first()
+    if not marketing_settings:
+        return Decimal("0")
+    discount = Decimal(str(marketing_settings.global_discount_percentage or "0"))
+    return min(max(discount, Decimal("0")), Decimal("100"))
 
 
 def release_reserved_stock(order: Order, db: Session | None = None, actor: str | None = None) -> None:
@@ -116,7 +125,13 @@ def create_order(
         price = resolve_product_unit_price(product, item.selected_attributes)
         subtotal += price * item.quantity
 
-    total = (subtotal * (Decimal("1") + get_checkout_tax_rate())).quantize(MONEY_QUANT)
+    discount_percentage = get_global_discount_percentage(db)
+    discount_amount = ((subtotal * discount_percentage) / Decimal("100")).quantize(MONEY_QUANT)
+    discounted_subtotal = (subtotal - discount_amount).quantize(MONEY_QUANT)
+    tax_rate = get_checkout_tax_rate()
+    tax_amount = (discounted_subtotal * tax_rate).quantize(MONEY_QUANT)
+    shipping_fee = Decimal("0")
+    total = (discounted_subtotal + tax_amount + shipping_fee).quantize(MONEY_QUANT)
 
     selected_item_ids = [item.id for item in selected_cart_items]
     stock_reserved = False
@@ -124,6 +139,12 @@ def create_order(
         user_id=current_user.id,
         address_id=address.id,
         total_amount=total,
+        subtotal_amount=subtotal.quantize(MONEY_QUANT),
+        discount_percentage=discount_percentage.quantize(Decimal("0.01")),
+        discount_amount=discount_amount,
+        tax_rate=tax_rate,
+        tax_amount=tax_amount,
+        shipping_fee=shipping_fee,
         status=OrderStatus.pending,
         payment_status=PaymentStatus.pending,
         checkout_cart_item_ids=json.dumps(selected_item_ids),

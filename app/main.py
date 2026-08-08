@@ -105,6 +105,32 @@ def ensure_runtime_schema_updates():
             except (OperationalError, ProgrammingError) as error:
                 if "already exists" not in str(error).lower():
                     raise
+        order_pricing_columns = {
+            "subtotal_amount": "NUMERIC(10, 2)",
+            "discount_percentage": "NUMERIC(5, 2) NOT NULL DEFAULT 0",
+            "discount_amount": "NUMERIC(10, 2) NOT NULL DEFAULT 0",
+            "tax_rate": "NUMERIC(6, 4) NOT NULL DEFAULT 0",
+            "tax_amount": "NUMERIC(10, 2) NOT NULL DEFAULT 0",
+            "shipping_fee": "NUMERIC(10, 2) NOT NULL DEFAULT 0",
+        }
+        for column_name, column_type in order_pricing_columns.items():
+            if column_name not in order_columns:
+                try:
+                    with engine.begin() as connection:
+                        connection.execute(text(f"ALTER TABLE orders ADD COLUMN {column_name} {column_type}"))
+                except (OperationalError, ProgrammingError) as error:
+                    if "already exists" not in str(error).lower():
+                        raise
+
+    if "marketing_banners" in table_names:
+        marketing_columns = {column["name"] for column in inspector.get_columns("marketing_banners")}
+        if "global_discount_percentage" not in marketing_columns:
+            try:
+                with engine.begin() as connection:
+                    connection.execute(text("ALTER TABLE marketing_banners ADD COLUMN global_discount_percentage NUMERIC(5, 2) NOT NULL DEFAULT 0"))
+            except (OperationalError, ProgrammingError) as error:
+                if "already exists" not in str(error).lower():
+                    raise
 
     if "carts" in table_names:
         cart_columns = {column["name"] for column in inspector.get_columns("carts")}

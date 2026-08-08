@@ -6,14 +6,15 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import distinct, func
 from typing import List, Optional
 from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.address import Address
 from app.models.cart import Cart
-from app.models.order import Order, OrderStatus, PaymentStatus
+from app.models.order import Order, OrderItem, OrderStatus, PaymentStatus
 from app.models.product import Product
+from app.models.analytics import ProductView, SiteVisit
 from app.models.industry import Industry
 from app.models.inventory import Inventory
 from app.models.review import Review
@@ -659,7 +660,6 @@ def top_categories_report(
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin),
 ):
-    from app.models.order import OrderItem
     from app.models.product import product_categories
     from app.models.category import Category
 
@@ -688,6 +688,103 @@ def top_categories_report(
         }
         for name, order_count, units_sold, revenue in rows
     ]
+
+
+@router.get("/reports/most-viewed-products")
+def most_viewed_products_report(
+    limit: int = Query(10, ge=1, le=20),
+    db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
+):
+    total_views = func.count(ProductView.id).label("total_views")
+    latest_viewed_at = func.max(ProductView.created_at).label("latest_viewed_at")
+
+    rows = (
+        db.query(Product.id, Product.name, total_views, latest_viewed_at)
+        .join(ProductView, ProductView.product_id == Product.id)
+        .filter(Product.is_active == True)
+        .group_by(Product.id, Product.name)
+        .order_by(total_views.desc(), Product.name.asc())
+        .limit(limit)
+        .all()
+    )
+
+    return [
+        {
+            "product_id": product_id,
+            "product_name": product_name,
+            "total_views": int(views or 0),
+            "latest_viewed_at": latest_at,
+        }
+        for product_id, product_name, views, latest_at in rows
+    ]
+
+
+@router.get("/reports/best-selling-products")
+def best_selling_products_report(
+    limit: int = Query(10, ge=1, le=20),
+    db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
+):
+    units_sold = func.sum(OrderItem.quantity).label("units_sold")
+    revenue = func.sum(OrderItem.unit_price * OrderItem.quantity).label("revenue")
+
+    rows = (
+        db.query(Product.id, Product.name, units_sold, revenue)
+        .join(OrderItem, OrderItem.product_id == Product.id)
+        .join(Order, Order.id == OrderItem.order_id)
+        .filter(
+            Product.is_active == True,
+            Order.payment_status == PaymentStatus.paid,
+            Order.status != OrderStatus.cancelled,
+        )
+        .group_by(Product.id, Product.name)
+        .order_by(units_sold.desc(), Product.name.asc())
+        .limit(limit)
+        .all()
+    )
+
+    return [
+        {
+            "product_id": product_id,
+            "product_name": product_name,
+            "units_sold": int(sold or 0),
+            "revenue": float(total_revenue or 0),
+        }
+        for product_id, product_name, sold, total_revenue in rows
+    ]
+
+
+@router.get("/reports/visitors")
+def visitors_report(
+    db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
+):
+    now = datetime.now(timezone.utc)
+
+    def stats_for(days: int):
+        start = now - timedelta(days=days)
+        row = (
+            db.query(
+                func.count(SiteVisit.id).label("total_visits"),
+                func.count(distinct(SiteVisit.visitor_id)).label("unique_visitors"),
+                func.count(distinct(SiteVisit.session_id)).label("unique_sessions"),
+            )
+            .filter(SiteVisit.created_at >= start)
+            .first()
+        )
+        return {
+            "days": days,
+            "start_date": start.isoformat(),
+            "total_visits": int(row.total_visits or 0),
+            "unique_visitors": int(row.unique_visitors or 0),
+            "unique_sessions": int(row.unique_sessions or 0),
+        }
+
+    return {
+        "last_7_days": stats_for(7),
+        "last_30_days": stats_for(30),
+    }
 
 
 # ── Industries ────────────────────────────────────────────────────────────────

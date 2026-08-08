@@ -15,7 +15,7 @@ from app.services.cart_reminders import start_cart_reminder_scheduler, stop_cart
 # Import all models so Base.metadata is populated before create_all
 import app.models  # noqa: F401
 
-from app.routers import auth, users, categories, products, cart, orders, reviews, payments, admin, inventory, tasks, manager, product_content
+from app.routers import auth, users, categories, products, cart, orders, reviews, payments, admin, inventory, tasks, manager, product_content, analytics
 
 # Create all tables on startup
 Base.metadata.create_all(bind=engine)
@@ -189,6 +189,8 @@ CSRF_EXEMPT_PATHS = {
     "/api/v1/auth/refresh",
     "/api/v1/auth/forgot-password",
     "/api/v1/auth/reset-password",
+    "/api/v1/analytics/visit",
+    "/api/v1/analytics/product-view",
     "/api/v1/payments/webhook",
 }
 
@@ -248,6 +250,7 @@ app.include_router(users.router,      prefix=API)
 app.include_router(categories.router, prefix=API)
 app.include_router(products.router,   prefix=API)
 app.include_router(product_content.router, prefix=API)
+app.include_router(analytics.router,  prefix=API)
 app.include_router(cart.router,       prefix=API)
 app.include_router(orders.router,     prefix=API)
 app.include_router(reviews.router,    prefix=API)

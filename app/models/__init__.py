@@ -9,6 +9,7 @@ from app.models.cart import Cart, CartItem
 from app.models.order import Order, OrderItem
 from app.models.review import Review
 from app.models.task import Task
+from app.models.analytics import ProductView, SiteVisit
 
 __all__ = [
     "User",
@@ -30,4 +31,6 @@ __all__ = [
     "OrderItem",
     "Review",
     "Task",
+    "ProductView",
+    "SiteVisit",
 ]

@@ -10,6 +10,7 @@ from app.models.order import Order, OrderItem
 from app.models.review import Review
 from app.models.task import Task
 from app.models.analytics import ProductView, SiteVisit
+from app.models.marketing import MarketingBanner
 
 __all__ = [
     "User",
@@ -34,4 +35,5 @@ __all__ = [
     "Task",
     "ProductView",
     "SiteVisit",
+    "MarketingBanner",
 ]

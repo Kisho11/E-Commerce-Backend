@@ -7,7 +7,7 @@ from fastapi import UploadFile, HTTPException
 from app.config import settings
 
 IMAGE_ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
-SAFE_FOLDERS = {"general", "products", "categories"}
+SAFE_FOLDERS = {"general", "products", "categories", "marketing"}
 IMAGE_EXTENSIONS = {"jpeg", "jpg", "png", "webp", "gif"}
 
 

@@ -41,7 +41,7 @@ def cart_item_matches(item: CartItem, product_id: int, selected_attributes: dict
 def build_cart_response(cart: Cart) -> dict:
     items = []
     total = Decimal("0")
-    for item in cart.items:
+    for item in sorted(cart.items, key=lambda cart_item: cart_item.id or 0):
         selected_attributes = normalize_attributes(item.selected_attributes or {})
         price = resolve_product_unit_price(item.product, selected_attributes)
         subtotal = price * item.quantity
@@ -134,14 +134,12 @@ def update_cart_item(
     if not item:
         raise HTTPException(status_code=404, detail="Cart item not found")
 
-    if update_data.quantity <= 0:
-        db.delete(item)
-    else:
-        try:
-            ensure_stock_available(item.product, item.selected_attributes or {}, update_data.quantity)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Insufficient stock")
-        item.quantity = update_data.quantity
+    next_quantity = max(1, int(update_data.quantity or 1))
+    try:
+        ensure_stock_available(item.product, item.selected_attributes or {}, next_quantity)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Insufficient stock")
+    item.quantity = next_quantity
     mark_cart_activity(cart)
 
     db.commit()

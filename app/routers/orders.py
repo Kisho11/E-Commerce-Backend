@@ -129,13 +129,13 @@ def create_order(
     discount_percentage = get_global_discount_percentage(db)
     discount_amount = ((subtotal * discount_percentage) / Decimal("100")).quantize(MONEY_QUANT)
     discounted_subtotal = (subtotal - discount_amount).quantize(MONEY_QUANT)
-    tax_rate = get_checkout_tax_rate()
-    tax_amount = (discounted_subtotal * tax_rate).quantize(MONEY_QUANT)
     shipping_fee = calculate_order_shipping_fee(
         db,
         (products_by_id[item.product_id] for item in selected_cart_items),
         delivery_mode,
     )
+    tax_rate = get_checkout_tax_rate()
+    tax_amount = ((discounted_subtotal + shipping_fee) * tax_rate).quantize(MONEY_QUANT)
     total = (discounted_subtotal + tax_amount + shipping_fee).quantize(MONEY_QUANT)
 
     selected_item_ids = [item.id for item in selected_cart_items]

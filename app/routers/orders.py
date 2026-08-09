@@ -14,6 +14,7 @@ from app.models.inventory import MovementType
 from app.schemas.order import OrderCreate, OrderResponse, OrderStatusUpdate
 from app.core.dependencies import get_current_user, get_current_admin
 from app.config import settings
+from app.utils.shipping import calculate_order_shipping_fee
 from app.utils.variant_pricing import (
     adjust_stock_quantity,
     ensure_stock_available,
@@ -130,7 +131,11 @@ def create_order(
     discounted_subtotal = (subtotal - discount_amount).quantize(MONEY_QUANT)
     tax_rate = get_checkout_tax_rate()
     tax_amount = (discounted_subtotal * tax_rate).quantize(MONEY_QUANT)
-    shipping_fee = Decimal("0")
+    shipping_fee = calculate_order_shipping_fee(
+        db,
+        (products_by_id[item.product_id] for item in selected_cart_items),
+        delivery_mode,
+    )
     total = (discounted_subtotal + tax_amount + shipping_fee).quantize(MONEY_QUANT)
 
     selected_item_ids = [item.id for item in selected_cart_items]

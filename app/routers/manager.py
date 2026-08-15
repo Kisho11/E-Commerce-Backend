@@ -9,6 +9,7 @@ from app.models.inventory import Inventory
 from app.models.review import Review
 from app.core.dependencies import get_current_manager
 from app.schemas.order import OrderResponse, OrderStatusUpdate
+from app.routers.orders import apply_order_status_change, send_order_status_update_email_safely
 
 router = APIRouter(prefix="/manager", tags=["Manager"])
 
@@ -66,7 +67,14 @@ def manager_update_order_status(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    order.status = status_update.status
+    status_changed = apply_order_status_change(
+        order,
+        status_update.status,
+        db,
+        actor=user.full_name,
+    )
     db.commit()
     db.refresh(order)
+    if status_changed:
+        send_order_status_update_email_safely(order, status_update.status)
     return order

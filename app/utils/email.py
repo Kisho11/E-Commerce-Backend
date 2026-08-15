@@ -156,6 +156,110 @@ def send_order_confirmation_email(
     _send_html_email(to_email, f"Order #{order_id} confirmed", html)
 
 
+def send_order_status_update_email(
+    to_email: str,
+    full_name: str,
+    order_id: int,
+    status: str,
+    total_amount,
+    delivery_mode: str,
+    delivery_note: str | None,
+    address: dict | None,
+    items: list[dict],
+) -> None:
+    if not settings.GMAIL_USER or not settings.GMAIL_APP_PASSWORD:
+        return
+
+    status_key = (status or "").strip().lower()
+    status_label = status_key.replace("_", " ").title()
+    status_messages = {
+        "confirmed": "Your order has been confirmed and is being prepared.",
+        "shipped": "Your order has been shipped and is on its way.",
+        "delivered": "Your order has been marked as delivered. Thank you for shopping with us.",
+        "cancelled": "Your order has been cancelled. If you have any questions, please contact our team.",
+    }
+    message = status_messages.get(status_key, f"Your order status is now {status_label}.")
+    order_url = f"{settings.FRONTEND_URL}/customer-portal"
+    mode_label = "Pickup from store" if delivery_mode == "pickup" else "Ship to address"
+    total = Decimal(str(total_amount or 0))
+    item_rows = "".join(
+        f"""
+        <tr>
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;">{escape(str(item.get("name") or "Product"))}</td>
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;text-align:center;">{int(item.get("quantity") or 0)}</td>
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;text-align:right;">Â£{Decimal(str(item.get("line_total") or 0)):.2f}</td>
+        </tr>
+        """
+        for item in items
+    )
+
+    address_lines = []
+    if address:
+        address_lines = [
+            address.get("address_line1"),
+            address.get("address_line2"),
+            address.get("city"),
+            address.get("state"),
+            address.get("postal_code"),
+            address.get("country"),
+        ]
+    address_html = "<br>".join(escape(str(line)) for line in address_lines if line) or "Pickup from store"
+
+    note_html = ""
+    if delivery_note:
+        note_html = f"""
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-top:16px;">
+          <p style="margin:0 0 6px;font-size:13px;color:#64748b;font-weight:700;text-transform:uppercase;">Delivery note</p>
+          <p style="margin:0;">{escape(delivery_note)}</p>
+        </div>
+        """
+
+    html = f"""<!DOCTYPE html>
+<html>
+<body style="font-family:sans-serif;max-width:620px;margin:0 auto;padding:24px;color:#1e293b;">
+  <p style="margin:0 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#dc2626;">Order Update</p>
+  <h2 style="margin:0 0 8px;">Order #{order_id}: {escape(status_label)}</h2>
+  <p>Hi {escape(full_name or "Customer")},</p>
+  <p>{escape(message)}</p>
+
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin:24px 0;">
+    <p style="margin:0 0 8px;"><strong>Order ID:</strong> #{order_id}</p>
+    <p style="margin:0 0 8px;"><strong>Status:</strong> {escape(status_label)}</p>
+    <p style="margin:0 0 8px;"><strong>Delivery:</strong> {mode_label}</p>
+    <p style="margin:0;"><strong>Total:</strong> Â£{total:.2f}</p>
+  </div>
+
+  <h3 style="margin-bottom:10px;">Items</h3>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+    <thead>
+      <tr style="background:#f1f5f9;">
+        <th style="padding:10px;text-align:left;">Product</th>
+        <th style="padding:10px;text-align:center;">Qty</th>
+        <th style="padding:10px;text-align:right;">Total</th>
+      </tr>
+    </thead>
+    <tbody>{item_rows}</tbody>
+  </table>
+
+  <h3 style="margin-bottom:8px;">Delivery details</h3>
+  <p style="margin-top:0;">{address_html}</p>
+  {note_html}
+
+  <p style="text-align:center;margin:28px 0;">
+    <a href="{order_url}"
+       style="background:#dc2626;color:#fff;padding:13px 24px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;">
+      View My Orders
+    </a>
+  </p>
+  <p style="font-size:13px;color:#64748b;">
+    If you have any questions, reply to this email or contact our support team.
+  </p>
+</body>
+</html>"""
+
+    _send_html_email(to_email, f"Order #{order_id} {status_label}", html)
+
+
 def send_cart_reminder_email(
     to_email: str,
     full_name: str,

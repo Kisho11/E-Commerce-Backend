@@ -1,5 +1,6 @@
 from decimal import Decimal
 import json
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -14,6 +15,7 @@ from app.models.inventory import MovementType
 from app.schemas.order import OrderCreate, OrderResponse, OrderStatusUpdate
 from app.core.dependencies import get_current_user, get_current_admin
 from app.config import settings
+from app.utils.email import send_order_status_update_email
 from app.utils.shipping import calculate_order_shipping_fee
 from app.utils.variant_pricing import (
     adjust_stock_quantity,
@@ -24,6 +26,13 @@ from app.utils.variant_pricing import (
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 MONEY_QUANT = Decimal("0.01")
+logger = logging.getLogger(__name__)
+EMAIL_STATUSES = {
+    OrderStatus.confirmed,
+    OrderStatus.shipped,
+    OrderStatus.delivered,
+    OrderStatus.cancelled,
+}
 
 
 def get_checkout_tax_rate() -> Decimal:
@@ -54,6 +63,61 @@ def release_reserved_stock(order: Order, db: Session | None = None, actor: str |
                 actor=actor,
             )
     order.stock_reserved = False
+
+
+def build_order_email_items(order: Order) -> list[dict]:
+    return [
+        {
+            "name": item.product.name if item.product else f"Product #{item.product_id}",
+            "quantity": item.quantity,
+            "line_total": float(item.total_price),
+        }
+        for item in order.items
+    ]
+
+
+def build_order_status_email_payload(order: Order, status: OrderStatus) -> dict:
+    address = order.address
+    return {
+        "to_email": order.user.email,
+        "full_name": order.user.full_name,
+        "order_id": order.id,
+        "status": status.value,
+        "total_amount": float(order.total_amount),
+        "delivery_mode": order.delivery_mode,
+        "delivery_note": order.delivery_note,
+        "address": {
+            "address_line1": address.address_line1,
+            "address_line2": address.address_line2,
+            "city": address.city,
+            "state": address.state,
+            "postal_code": address.postal_code,
+            "country": address.country,
+        } if address else None,
+        "items": build_order_email_items(order),
+    }
+
+
+def send_order_status_update_email_safely(order: Order, status: OrderStatus) -> None:
+    if status not in EMAIL_STATUSES:
+        return
+
+    try:
+        send_order_status_update_email(**build_order_status_email_payload(order, status))
+    except Exception:
+        logger.exception("Failed to send order status email for order %s", order.id)
+
+
+def apply_order_status_change(order: Order, new_status: OrderStatus, db: Session, actor: str | None = None) -> bool:
+    old_status = order.status
+    if old_status == new_status:
+        return False
+
+    if new_status == OrderStatus.cancelled:
+        release_reserved_stock(order, db=db, actor=actor)
+
+    order.status = new_status
+    return True
 
 
 @router.post("/", response_model=OrderResponse, status_code=201)
@@ -238,10 +302,16 @@ def cancel_order(
     if order.status not in [OrderStatus.pending, OrderStatus.confirmed]:
         raise HTTPException(status_code=400, detail="Order cannot be cancelled at this stage")
 
-    release_reserved_stock(order, db=db, actor=current_user.full_name)
-    order.status = OrderStatus.cancelled
+    status_changed = apply_order_status_change(
+        order,
+        OrderStatus.cancelled,
+        db,
+        actor=current_user.full_name,
+    )
     db.commit()
     db.refresh(order)
+    if status_changed:
+        send_order_status_update_email_safely(order, OrderStatus.cancelled)
     return order
 
 
@@ -276,7 +346,14 @@ def admin_update_order_status(
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    order.status = status_update.status
+    status_changed = apply_order_status_change(
+        order,
+        status_update.status,
+        db,
+        actor=admin.full_name,
+    )
     db.commit()
     db.refresh(order)
+    if status_changed:
+        send_order_status_update_email_safely(order, status_update.status)
     return order

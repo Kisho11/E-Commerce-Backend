@@ -217,6 +217,7 @@ CSRF_EXEMPT_PATHS = {
     "/api/v1/auth/reset-password",
     "/api/v1/analytics/visit",
     "/api/v1/analytics/product-view",
+    "/api/v1/marketing/subscribe",
     "/api/v1/payments/webhook",
 }
 

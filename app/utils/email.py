@@ -215,6 +215,61 @@ def send_cart_reminder_email(
     _send_html_email(to_email, "Reminder: items are waiting in your cart", html)
 
 
+def send_marketing_campaign_email(
+    to_email: str,
+    full_name: str,
+    campaign_type: str,
+    subject: str,
+    message_html: str,
+    image_urls: list[str],
+    unsubscribe_url: str,
+) -> None:
+    if not settings.GMAIL_USER or not settings.GMAIL_APP_PASSWORD:
+        return
+
+    website_url = settings.FRONTEND_URL
+
+    html = f"""<!DOCTYPE html>
+<html>
+<body style="margin:0;background:#f8fafc;font-family:Arial,sans-serif;color:#1e293b;">
+  <div style="max-width:640px;margin:0 auto;padding:24px;">
+    <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;">
+      <div style="background:#111827;padding:22px 24px;color:#ffffff;">
+        <p style="margin:0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#93c5fd;">{escape(settings.EMAIL_FROM_NAME)}</p>
+        <h1 style="margin:8px 0 0;font-size:24px;line-height:1.25;">{escape(subject)}</h1>
+      </div>
+
+      <div style="padding:24px;">
+        <p style="display:inline-block;margin:0 0 16px;padding:6px 10px;border-radius:999px;background:#fee2e2;color:#991b1b;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;">
+          {escape(campaign_type)}
+        </p>
+        <p style="margin:0 0 16px;">Hi {escape(full_name or "Customer")},</p>
+        <div style="font-size:15px;line-height:1.7;color:#334155;">
+          {message_html}
+        </div>
+
+        <p style="text-align:center;margin:28px 0;">
+          <a href="{website_url}"
+             style="display:inline-block;background:#dc2626;color:#fff;padding:13px 24px;border-radius:10px;text-decoration:none;font-weight:700;font-size:15px;">
+            Visit Elmshelf
+          </a>
+        </p>
+      </div>
+
+      <div style="border-top:1px solid #e2e8f0;padding:18px 24px;background:#f8fafc;font-size:12px;line-height:1.6;color:#64748b;">
+        <p style="margin:0 0 8px;">You received this because you subscribed to promotions, offers, and event updates from {escape(settings.EMAIL_FROM_NAME)}.</p>
+        <p style="margin:0;">
+          <a href="{unsubscribe_url}" style="color:#64748b;text-decoration:underline;">Unsubscribe</a>
+        </p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>"""
+
+    _send_html_email(to_email, subject, html)
+
+
 def send_password_reset_email(to_email: str, full_name: str, token: str) -> None:
     if not settings.GMAIL_USER or not settings.GMAIL_APP_PASSWORD:
         return

@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     EMAIL_FROM_ADDRESS: str = ""
     EMAIL_REPLY_TO: str = ""
     ORDER_NOTIFICATION_EMAIL: str = ""
+    QUOTATION_NOTIFICATION_EMAIL: str = "sales@elmshelf.com"
     FRONTEND_URL: str = "http://localhost:3000"
     EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24
     MANAGER_INVITE_TOKEN_EXPIRE_HOURS: int = 72

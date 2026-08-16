@@ -11,6 +11,7 @@ from app.models.review import Review
 from app.models.task import Task
 from app.models.analytics import ProductView, SiteVisit
 from app.models.marketing import MarketingBanner, MarketingCatalogue, MarketingEmailCampaign, NewsletterSubscriber
+from app.models.quotation import QuotationRequest
 
 __all__ = [
     "User",
@@ -39,4 +40,5 @@ __all__ = [
     "MarketingCatalogue",
     "MarketingEmailCampaign",
     "NewsletterSubscriber",
+    "QuotationRequest",
 ]

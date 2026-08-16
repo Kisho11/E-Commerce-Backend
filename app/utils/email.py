@@ -259,6 +259,58 @@ def send_new_order_notification_email(
     )
 
 
+def send_quotation_request_notification_email(
+    to_email: str,
+    full_name: str,
+    customer_email: str,
+    phone: str,
+    requirements: list[str],
+    message: str,
+    request_id: int,
+) -> None:
+    if not settings.GMAIL_USER or not settings.GMAIL_APP_PASSWORD:
+        return
+
+    requirement_items = "".join(
+        f"<li>{escape(str(requirement))}</li>"
+        for requirement in requirements
+    )
+    requirements_html = (
+        f"<ul style=\"margin:8px 0 0;padding-left:20px;\">{requirement_items}</ul>"
+        if requirement_items
+        else "<p style=\"margin:8px 0 0;\">No specific requirements selected.</p>"
+    )
+    html = f"""<!DOCTYPE html>
+<html>
+<body style="font-family:sans-serif;max-width:680px;margin:0 auto;padding:24px;color:#1e293b;">
+  {_email_logo_html()}
+  <p style="margin:0 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#dc2626;">New quotation request</p>
+  <h2 style="margin:0 0 18px;">Quotation Request #{request_id}</h2>
+
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin:0 0 22px;">
+    <p style="margin:0 0 8px;"><strong>Name:</strong> {escape(full_name or "-")}</p>
+    <p style="margin:0 0 8px;"><strong>Email:</strong> {escape(customer_email or "-")}</p>
+    <p style="margin:0;"><strong>Phone:</strong> {escape(phone or "-")}</p>
+  </div>
+
+  <h3 style="margin-bottom:8px;">Selected requirements</h3>
+  {requirements_html}
+
+  <h3 style="margin:22px 0 8px;">Message</h3>
+  <div style="white-space:pre-wrap;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;line-height:1.6;">
+    {escape(message or "-")}
+  </div>
+</body>
+</html>"""
+
+    _send_html_email(
+        to_email,
+        f"New quotation request #{request_id}",
+        html,
+        reply_to=customer_email,
+    )
+
+
 def send_order_status_update_email(
     to_email: str,
     full_name: str,

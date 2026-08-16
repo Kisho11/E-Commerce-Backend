@@ -20,6 +20,7 @@ class NewsletterSubscriber(Base):
     id = Column(Integer, primary_key=True, index=True)
     full_name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
+    business_type = Column(String, default="shopowner", nullable=False)
     consent_accepted = Column(Boolean, default=True, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     unsubscribe_token = Column(String, unique=True, index=True, nullable=False)

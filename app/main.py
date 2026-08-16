@@ -132,6 +132,16 @@ def ensure_runtime_schema_updates():
                 if "already exists" not in str(error).lower():
                     raise
 
+    if "newsletter_subscribers" in table_names:
+        subscriber_columns = {column["name"] for column in inspector.get_columns("newsletter_subscribers")}
+        if "business_type" not in subscriber_columns:
+            try:
+                with engine.begin() as connection:
+                    connection.execute(text("ALTER TABLE newsletter_subscribers ADD COLUMN business_type VARCHAR NOT NULL DEFAULT 'shopowner'"))
+            except (OperationalError, ProgrammingError) as error:
+                if "already exists" not in str(error).lower() and "duplicate column" not in str(error).lower():
+                    raise
+
     if "carts" in table_names:
         cart_columns = {column["name"] for column in inspector.get_columns("carts")}
         if "last_reminder_at" not in cart_columns:

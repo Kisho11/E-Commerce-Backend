@@ -1,7 +1,10 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import BaseModel, EmailStr, Field
+
+
+BusinessType = Literal["shopowner", "shopfitter"]
 
 
 class MarketingBannerResponse(BaseModel):
@@ -27,6 +30,7 @@ class MarketingSettingsUpdate(BaseModel):
 class NewsletterSubscribeRequest(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=120)
     email: EmailStr
+    business_type: BusinessType
     consent_accepted: bool
 
 
@@ -39,6 +43,7 @@ class NewsletterSubscriberResponse(BaseModel):
     id: int
     full_name: str
     email: EmailStr
+    business_type: BusinessType = "shopowner"
     is_active: bool
     subscribed_at: Optional[datetime] = None
     unsubscribed_at: Optional[datetime] = None

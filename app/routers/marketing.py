@@ -197,6 +197,7 @@ def subscribe_to_newsletter(
 
     email = _normalize_email(subscription.email)
     full_name = subscription.full_name.strip()
+    business_type = subscription.business_type
     if len(full_name) < 2:
         raise HTTPException(status_code=422, detail="Name is required before subscribing")
     subscriber = db.query(NewsletterSubscriber).filter(NewsletterSubscriber.email == email).first()
@@ -206,6 +207,7 @@ def subscribe_to_newsletter(
             return {"message": "You're already subscribed.", "is_active": True}
 
         subscriber.full_name = full_name
+        subscriber.business_type = business_type
         subscriber.is_active = True
         subscriber.consent_accepted = True
         subscriber.unsubscribed_at = None
@@ -216,6 +218,7 @@ def subscribe_to_newsletter(
     subscriber = NewsletterSubscriber(
         full_name=full_name,
         email=email,
+        business_type=business_type,
         consent_accepted=True,
         is_active=True,
         unsubscribe_token=secrets.token_urlsafe(32),
@@ -254,7 +257,6 @@ def unsubscribe_from_newsletter(token: str, db: Session = Depends(get_db)):
 
 @router.get("/admin/subscribers", response_model=list[NewsletterSubscriberResponse])
 def get_newsletter_subscribers(db: Session = Depends(get_db), admin=Depends(get_current_admin)):
-    _ensure_admin_email_campaigns_enabled()
     return db.query(NewsletterSubscriber).order_by(
         NewsletterSubscriber.is_active.desc(),
         NewsletterSubscriber.created_at.desc(),

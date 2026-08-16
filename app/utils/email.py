@@ -6,6 +6,18 @@ from email.mime.text import MIMEText
 from app.config import settings
 
 
+def _public_asset_url(path: str) -> str:
+    return f"{settings.FRONTEND_URL.rstrip('/')}/{path.lstrip('/')}"
+
+
+def _email_logo_html(max_width: int = 240) -> str:
+    logo_url = escape(_public_asset_url("/elmshelf-logo.png"), quote=True)
+    return f"""
+  <div style="text-align:center;margin:0 0 22px;">
+    <img src="{logo_url}" alt="Elmshelf" width="{max_width}" style="display:inline-block;width:100%;max-width:{max_width}px;height:auto;border:0;">
+  </div>"""
+
+
 def _send_html_email(to_email: str, subject: str, html: str) -> None:
     if not settings.GMAIL_USER or not settings.GMAIL_APP_PASSWORD:
         return
@@ -31,6 +43,7 @@ def send_verification_email(to_email: str, full_name: str, token: str) -> None:
     html = f"""<!DOCTYPE html>
 <html>
 <body style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1e293b;">
+  {_email_logo_html()}
   <h2 style="margin-bottom:8px;">Verify your email</h2>
   <p>Hi {full_name},</p>
   <p>Thanks for signing up at <strong>{settings.EMAIL_FROM_NAME}</strong>. Click below to verify your email address:</p>
@@ -115,6 +128,7 @@ def send_order_confirmation_email(
     html = f"""<!DOCTYPE html>
 <html>
 <body style="font-family:sans-serif;max-width:620px;margin:0 auto;padding:24px;color:#1e293b;">
+  {_email_logo_html()}
   <h2 style="margin-bottom:8px;">Order confirmed</h2>
   <p>Hi {escape(full_name or "Customer")},</p>
   <p>Thanks for your order at <strong>{escape(settings.EMAIL_FROM_NAME)}</strong>. We have received your order and will process it shortly.</p>
@@ -217,6 +231,7 @@ def send_order_status_update_email(
     html = f"""<!DOCTYPE html>
 <html>
 <body style="font-family:sans-serif;max-width:620px;margin:0 auto;padding:24px;color:#1e293b;">
+  {_email_logo_html()}
   <p style="margin:0 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#dc2626;">Order Update</p>
   <h2 style="margin:0 0 8px;">Order #{order_id}: {escape(status_label)}</h2>
   <p>Hi {escape(full_name or "Customer")},</p>
@@ -285,6 +300,7 @@ def send_cart_reminder_email(
     html = f"""<!DOCTYPE html>
 <html>
 <body style="font-family:sans-serif;max-width:620px;margin:0 auto;padding:24px;color:#1e293b;">
+  {_email_logo_html()}
   <h2 style="margin-bottom:8px;">You still have items in your cart</h2>
   <p>Hi {escape(full_name or "Customer")},</p>
   <p>You left some products in your <strong>{escape(settings.EMAIL_FROM_NAME)}</strong> cart. If you still need them, you can return to your cart and complete checkout.</p>
@@ -339,6 +355,7 @@ def send_marketing_campaign_email(
   <div style="max-width:640px;margin:0 auto;padding:24px;">
     <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;">
       <div style="background:#111827;padding:22px 24px;color:#ffffff;">
+        {_email_logo_html(260)}
         <p style="margin:0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#93c5fd;">{escape(settings.EMAIL_FROM_NAME)}</p>
         <h1 style="margin:8px 0 0;font-size:24px;line-height:1.25;">{escape(subject)}</h1>
       </div>
@@ -383,6 +400,7 @@ def send_password_reset_email(to_email: str, full_name: str, token: str) -> None
     html = f"""<!DOCTYPE html>
 <html>
 <body style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1e293b;">
+  {_email_logo_html()}
   <h2 style="margin-bottom:8px;">Reset your password</h2>
   <p>Hi {full_name},</p>
   <p>We received a request to reset the password for your <strong>{settings.EMAIL_FROM_NAME}</strong> account.
@@ -425,6 +443,7 @@ def send_manager_invite_email(to_email: str, full_name: str, temp_password: str,
     html = f"""<!DOCTYPE html>
 <html>
 <body style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#1e293b;">
+  {_email_logo_html()}
   <h2 style="margin-bottom:8px;">You've been added as a Manager</h2>
   <p>Hi {full_name},</p>
   <p>An admin has set up a manager account for you at <strong>{settings.EMAIL_FROM_NAME}</strong>.

@@ -15,9 +15,12 @@ PASSWORD_RESET_TOKEN_EXPIRE_MINUTES=15
 # 1. Enable 2-Step Verification on your Google account
 # 2. Go to: https://myaccount.google.com/apppasswords
 # 3. Create an app password for "Mail" — use that 16-char code below (no spaces)
-GMAIL_USER=elmshelf12@gmail.com
-GMAIL_APP_PASSWORD=adpm dqgg nzmg mbsl
+GMAIL_USER=sales@elmshelf.com
+GMAIL_APP_PASSWORD=replace-with-google-workspace-app-password
 EMAIL_FROM_NAME=Elmshelf Store
+EMAIL_FROM_ADDRESS=sales@elmshelf.com
+EMAIL_REPLY_TO=sales@elmshelf.com
+ORDER_NOTIFICATION_EMAIL=sales@elmshelf.com
 FRONTEND_URL=http://localhost:3000
 EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS=24
 

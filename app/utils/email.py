@@ -18,20 +18,28 @@ def _email_logo_html(max_width: int = 240) -> str:
   </div>"""
 
 
-def _send_html_email(to_email: str, subject: str, html: str) -> None:
+def _sender_address() -> str:
+    return settings.EMAIL_FROM_ADDRESS or settings.GMAIL_USER
+
+
+def _send_html_email(to_email: str, subject: str, html: str, reply_to: str | None = None) -> None:
     if not settings.GMAIL_USER or not settings.GMAIL_APP_PASSWORD:
         return
 
+    sender = _sender_address()
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = f"{settings.EMAIL_FROM_NAME} <{settings.GMAIL_USER}>"
+    msg["From"] = f"{settings.EMAIL_FROM_NAME} <{sender}>"
     msg["To"] = to_email
+    reply_to_address = reply_to or settings.EMAIL_REPLY_TO
+    if reply_to_address:
+        msg["Reply-To"] = reply_to_address
     msg.attach(MIMEText(html, "html"))
 
     with smtplib.SMTP("smtp.gmail.com", 587) as server:
         server.starttls()
         server.login(settings.GMAIL_USER, settings.GMAIL_APP_PASSWORD)
-        server.sendmail(settings.GMAIL_USER, to_email, msg.as_string())
+        server.sendmail(settings.GMAIL_USER, [to_email], msg.as_string())
 
 
 def send_verification_email(to_email: str, full_name: str, token: str) -> None:
@@ -64,16 +72,7 @@ def send_verification_email(to_email: str, full_name: str, token: str) -> None:
 </body>
 </html>"""
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"Verify your {settings.EMAIL_FROM_NAME} account"
-    msg["From"] = f"{settings.EMAIL_FROM_NAME} <{settings.GMAIL_USER}>"
-    msg["To"] = to_email
-    msg.attach(MIMEText(html, "html"))
-
-    with smtplib.SMTP("smtp.gmail.com", 587) as server:
-        server.starttls()
-        server.login(settings.GMAIL_USER, settings.GMAIL_APP_PASSWORD)
-        server.sendmail(settings.GMAIL_USER, to_email, msg.as_string())
+    _send_html_email(to_email, f"Verify your {settings.EMAIL_FROM_NAME} account", html)
 
 
 def send_order_confirmation_email(
@@ -168,6 +167,96 @@ def send_order_confirmation_email(
 </html>"""
 
     _send_html_email(to_email, f"Order #{order_id} confirmed", html)
+
+
+def send_new_order_notification_email(
+    to_email: str,
+    customer_email: str,
+    customer_name: str,
+    customer_phone: str | None,
+    order_id: int,
+    total_amount,
+    delivery_mode: str,
+    delivery_note: str | None,
+    address: dict | None,
+    items: list[dict],
+) -> None:
+    if not settings.GMAIL_USER or not settings.GMAIL_APP_PASSWORD:
+        return
+
+    mode_label = "Pickup from store" if delivery_mode == "pickup" else "Ship to address"
+    total = Decimal(str(total_amount or 0))
+    item_rows = "".join(
+        f"""
+        <tr>
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;">{escape(str(item.get("name") or "Product"))}</td>
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;text-align:center;">{int(item.get("quantity") or 0)}</td>
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;text-align:right;">GBP {Decimal(str(item.get("line_total") or 0)):.2f}</td>
+        </tr>
+        """
+        for item in items
+    )
+
+    address_lines = []
+    if address:
+        address_lines = [
+            address.get("address_line1"),
+            address.get("address_line2"),
+            address.get("city"),
+            address.get("state"),
+            address.get("postal_code"),
+            address.get("country"),
+        ]
+    address_html = "<br>".join(escape(str(line)) for line in address_lines if line) or "Pickup from store"
+
+    note_html = ""
+    if delivery_note:
+        note_html = f"""
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-top:16px;">
+          <p style="margin:0 0 6px;font-size:13px;color:#64748b;font-weight:700;text-transform:uppercase;">Delivery note</p>
+          <p style="margin:0;">{escape(delivery_note)}</p>
+        </div>
+        """
+
+    html = f"""<!DOCTYPE html>
+<html>
+<body style="font-family:sans-serif;max-width:680px;margin:0 auto;padding:24px;color:#1e293b;">
+  {_email_logo_html()}
+  <p style="margin:0 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#dc2626;">New paid order</p>
+  <h2 style="margin:0 0 18px;">Order #{order_id}</h2>
+
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin:0 0 22px;">
+    <p style="margin:0 0 8px;"><strong>Customer:</strong> {escape(customer_name or "Customer")}</p>
+    <p style="margin:0 0 8px;"><strong>Email:</strong> {escape(customer_email or "-")}</p>
+    <p style="margin:0 0 8px;"><strong>Phone:</strong> {escape(customer_phone or "-")}</p>
+    <p style="margin:0 0 8px;"><strong>Delivery:</strong> {mode_label}</p>
+    <p style="margin:0;"><strong>Total:</strong> GBP {total:.2f}</p>
+  </div>
+
+  <h3 style="margin-bottom:10px;">Items</h3>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+    <thead>
+      <tr style="background:#f1f5f9;">
+        <th style="padding:10px;text-align:left;">Product</th>
+        <th style="padding:10px;text-align:center;">Qty</th>
+        <th style="padding:10px;text-align:right;">Total</th>
+      </tr>
+    </thead>
+    <tbody>{item_rows}</tbody>
+  </table>
+
+  <h3 style="margin-bottom:8px;">Delivery details</h3>
+  <p style="margin-top:0;">{address_html}</p>
+  {note_html}
+</body>
+</html>"""
+
+    _send_html_email(
+        to_email,
+        f"New paid order #{order_id}",
+        html,
+        reply_to=customer_email,
+    )
 
 
 def send_order_status_update_email(
@@ -422,16 +511,7 @@ def send_password_reset_email(to_email: str, full_name: str, token: str) -> None
 </body>
 </html>"""
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"Reset your {settings.EMAIL_FROM_NAME} password"
-    msg["From"] = f"{settings.EMAIL_FROM_NAME} <{settings.GMAIL_USER}>"
-    msg["To"] = to_email
-    msg.attach(MIMEText(html, "html"))
-
-    with smtplib.SMTP("smtp.gmail.com", 587) as server:
-        server.starttls()
-        server.login(settings.GMAIL_USER, settings.GMAIL_APP_PASSWORD)
-        server.sendmail(settings.GMAIL_USER, to_email, msg.as_string())
+    _send_html_email(to_email, f"Reset your {settings.EMAIL_FROM_NAME} password", html)
 
 
 def send_manager_invite_email(to_email: str, full_name: str, temp_password: str, token: str) -> None:
@@ -470,13 +550,4 @@ def send_manager_invite_email(to_email: str, full_name: str, temp_password: str,
 </body>
 </html>"""
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"Your {settings.EMAIL_FROM_NAME} manager account is ready"
-    msg["From"] = f"{settings.EMAIL_FROM_NAME} <{settings.GMAIL_USER}>"
-    msg["To"] = to_email
-    msg.attach(MIMEText(html, "html"))
-
-    with smtplib.SMTP("smtp.gmail.com", 587) as server:
-        server.starttls()
-        server.login(settings.GMAIL_USER, settings.GMAIL_APP_PASSWORD)
-        server.sendmail(settings.GMAIL_USER, to_email, msg.as_string())
+    _send_html_email(to_email, f"Your {settings.EMAIL_FROM_NAME} manager account is ready", html)

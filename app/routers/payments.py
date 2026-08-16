@@ -14,7 +14,7 @@ from app.models.inventory import MovementType
 from app.schemas.order import OrderResponse
 from app.core.dependencies import get_current_user
 from app.config import settings
-from app.utils.email import send_order_confirmation_email
+from app.utils.email import send_new_order_notification_email, send_order_confirmation_email
 from app.utils.variant_pricing import adjust_stock_quantity, ensure_stock_available
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -30,6 +30,13 @@ def send_order_confirmation_email_safely(**payload):
         send_order_confirmation_email(**payload)
     except Exception:
         logger.exception("Failed to send order confirmation email for order %s", payload.get("order_id"))
+
+
+def send_new_order_notification_email_safely(**payload):
+    try:
+        send_new_order_notification_email(**payload)
+    except Exception:
+        logger.exception("Failed to send new order notification email for order %s", payload.get("order_id"))
 
 
 def parse_checkout_cart_item_ids(order: Order) -> list[int]:
@@ -58,6 +65,29 @@ def build_order_email_payload(order: Order) -> dict:
     return {
         "to_email": order.user.email,
         "full_name": order.user.full_name,
+        "order_id": order.id,
+        "total_amount": float(order.total_amount),
+        "delivery_mode": order.delivery_mode,
+        "delivery_note": order.delivery_note,
+        "address": {
+            "address_line1": address.address_line1,
+            "address_line2": address.address_line2,
+            "city": address.city,
+            "state": address.state,
+            "postal_code": address.postal_code,
+            "country": address.country,
+        },
+        "items": build_order_email_items(order),
+    }
+
+
+def build_new_order_notification_email_payload(order: Order) -> dict:
+    address = order.address
+    return {
+        "to_email": settings.ORDER_NOTIFICATION_EMAIL or settings.EMAIL_REPLY_TO or settings.GMAIL_USER,
+        "customer_email": order.user.email,
+        "customer_name": order.user.full_name,
+        "customer_phone": order.user.phone,
         "order_id": order.id,
         "total_amount": float(order.total_amount),
         "delivery_mode": order.delivery_mode,
@@ -184,12 +214,15 @@ def finalize_paid_order(
 
     try:
         email_payload = build_order_email_payload(order)
+        notification_payload = build_new_order_notification_email_payload(order)
         if background_tasks:
             background_tasks.add_task(send_order_confirmation_email_safely, **email_payload)
+            background_tasks.add_task(send_new_order_notification_email_safely, **notification_payload)
         else:
             send_order_confirmation_email_safely(**email_payload)
+            send_new_order_notification_email_safely(**notification_payload)
     except Exception:
-        logger.exception("Failed to build/send confirmation email for order %s", order.id)
+        logger.exception("Failed to build/send paid order emails for order %s", order.id)
 
     return order
 

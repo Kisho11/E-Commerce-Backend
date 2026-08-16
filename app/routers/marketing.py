@@ -33,6 +33,7 @@ DISCOUNT_MAX = Decimal("100")
 DEFAULT_CAMPAIGN_TYPE = "Marketing Update"
 CAMPAIGN_IMAGE_MAX_COUNT = 5
 CAMPAIGN_IMAGE_MAX_BYTES = 2 * 1024 * 1024
+ADMIN_EMAIL_CAMPAIGNS_ENABLED = False
 ALLOWED_CAMPAIGN_HTML_TAGS = {
     "p", "br", "strong", "b", "em", "i", "u", "s", "h2", "h3", "ul", "ol", "li", "blockquote", "img",
 }
@@ -148,6 +149,11 @@ def _extract_campaign_image_urls(message_html: str) -> list[str]:
     return re.findall(r'<img[^>]+src="([^"]+)"', message_html, flags=re.IGNORECASE)
 
 
+def _ensure_admin_email_campaigns_enabled() -> None:
+    if not ADMIN_EMAIL_CAMPAIGNS_ENABLED:
+        raise HTTPException(status_code=404, detail="Email campaigns are currently disabled")
+
+
 @router.get("/banner", response_model=Optional[MarketingBannerResponse])
 def get_active_banner(db: Session = Depends(get_db)):
     banner = _get_banner(db)
@@ -248,6 +254,7 @@ def unsubscribe_from_newsletter(token: str, db: Session = Depends(get_db)):
 
 @router.get("/admin/subscribers", response_model=list[NewsletterSubscriberResponse])
 def get_newsletter_subscribers(db: Session = Depends(get_db), admin=Depends(get_current_admin)):
+    _ensure_admin_email_campaigns_enabled()
     return db.query(NewsletterSubscriber).order_by(
         NewsletterSubscriber.is_active.desc(),
         NewsletterSubscriber.created_at.desc(),
@@ -256,6 +263,7 @@ def get_newsletter_subscribers(db: Session = Depends(get_db), admin=Depends(get_
 
 @router.get("/admin/campaigns", response_model=list[MarketingEmailCampaignResponse])
 def get_marketing_campaigns(db: Session = Depends(get_db), admin=Depends(get_current_admin)):
+    _ensure_admin_email_campaigns_enabled()
     return db.query(MarketingEmailCampaign).order_by(MarketingEmailCampaign.created_at.desc()).limit(20).all()
 
 
@@ -265,6 +273,7 @@ async def upload_marketing_campaign_images(
     images: list[UploadFile] = File(...),
     admin=Depends(get_current_admin),
 ):
+    _ensure_admin_email_campaigns_enabled()
     image_urls = await _save_campaign_images(images, request)
     return {"image_urls": image_urls}
 
@@ -277,6 +286,7 @@ async def send_marketing_campaign(
     db: Session = Depends(get_db),
     admin=Depends(get_current_admin),
 ):
+    _ensure_admin_email_campaigns_enabled()
     clean_subject = (subject or "").strip()
 
     if len(clean_subject) < 3 or len(clean_subject) > 180:

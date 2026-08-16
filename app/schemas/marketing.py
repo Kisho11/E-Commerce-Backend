@@ -27,6 +27,21 @@ class MarketingSettingsUpdate(BaseModel):
     global_discount_percentage: Decimal = Decimal("0")
 
 
+class MarketingCatalogueResponse(BaseModel):
+    id: int
+    file_url: str
+    original_filename: str
+    file_size: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class MarketingCatalogueDeleteResponse(BaseModel):
+    message: str
+
+
 class NewsletterSubscribeRequest(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=120)
     email: EmailStr

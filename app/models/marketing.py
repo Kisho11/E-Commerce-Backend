@@ -14,6 +14,17 @@ class MarketingBanner(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
+class MarketingCatalogue(Base):
+    __tablename__ = "marketing_catalogues"
+
+    id = Column(Integer, primary_key=True, index=True)
+    file_url = Column(String, nullable=False)
+    original_filename = Column(String, nullable=False)
+    file_size = Column(Integer, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
 class NewsletterSubscriber(Base):
     __tablename__ = "newsletter_subscribers"
 

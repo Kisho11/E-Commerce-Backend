@@ -4,15 +4,18 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from html import escape
 from html.parser import HTMLParser
+from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
 from app.core.dependencies import get_current_admin
 from app.database import get_db
-from app.models.marketing import MarketingBanner, MarketingEmailCampaign, NewsletterSubscriber
+from app.models.marketing import MarketingBanner, MarketingCatalogue, MarketingEmailCampaign, NewsletterSubscriber
 from app.schemas.marketing import (
     MarketingBannerResponse,
+    MarketingCatalogueDeleteResponse,
+    MarketingCatalogueResponse,
     MarketingCampaignSendResponse,
     MarketingCampaignImageUploadResponse,
     MarketingEmailCampaignResponse,
@@ -23,7 +26,7 @@ from app.schemas.marketing import (
     NewsletterSubscriberResponse,
 )
 from app.utils.email import send_marketing_campaign_email
-from app.utils.file_upload import save_upload
+from app.utils.file_upload import delete_uploaded_file, resolve_uploaded_file_path, save_pdf_upload, save_upload
 
 router = APIRouter(prefix="/marketing", tags=["Marketing"])
 
@@ -33,6 +36,7 @@ DISCOUNT_MAX = Decimal("100")
 DEFAULT_CAMPAIGN_TYPE = "Marketing Update"
 CAMPAIGN_IMAGE_MAX_COUNT = 5
 CAMPAIGN_IMAGE_MAX_BYTES = 2 * 1024 * 1024
+CATALOGUE_PDF_MAX_BYTES = 50 * 1024 * 1024
 ADMIN_EMAIL_CAMPAIGNS_ENABLED = False
 ALLOWED_CAMPAIGN_HTML_TAGS = {
     "p", "br", "strong", "b", "em", "i", "u", "s", "h2", "h3", "ul", "ol", "li", "blockquote", "img",
@@ -93,6 +97,10 @@ def _get_or_create_banner(db: Session) -> MarketingBanner:
     db.commit()
     db.refresh(banner)
     return banner
+
+
+def _get_catalogue(db: Session) -> Optional[MarketingCatalogue]:
+    return db.query(MarketingCatalogue).order_by(MarketingCatalogue.id.asc()).first()
 
 
 def _normalize_discount_percentage(value: str | Decimal | int | float | None) -> Decimal:
@@ -170,6 +178,28 @@ def get_marketing_settings(db: Session = Depends(get_db)):
     }
 
 
+@router.get("/catalogue", response_model=Optional[MarketingCatalogueResponse])
+def get_catalogue(db: Session = Depends(get_db)):
+    return _get_catalogue(db)
+
+
+@router.get("/catalogue/download")
+def download_catalogue(db: Session = Depends(get_db)):
+    catalogue = _get_catalogue(db)
+    if not catalogue:
+        raise HTTPException(status_code=404, detail="No catalogue is currently uploaded")
+
+    file_path = resolve_uploaded_file_path(catalogue.file_url)
+    if not file_path or not Path(file_path).is_file():
+        raise HTTPException(status_code=404, detail="Catalogue file not found")
+
+    return FileResponse(
+        file_path,
+        media_type="application/pdf",
+        filename=catalogue.original_filename or "Elmshelf Catalogue.pdf",
+    )
+
+
 @router.put("/admin/settings", response_model=MarketingSettingsResponse)
 def update_marketing_settings(
     settings_data: MarketingSettingsUpdate,
@@ -185,6 +215,62 @@ def update_marketing_settings(
     return {
         "global_discount_percentage": banner.global_discount_percentage,
     }
+
+
+@router.get("/admin/catalogue", response_model=Optional[MarketingCatalogueResponse])
+def get_admin_catalogue(db: Session = Depends(get_db), admin=Depends(get_current_admin)):
+    return _get_catalogue(db)
+
+
+@router.put("/admin/catalogue", response_model=MarketingCatalogueResponse)
+async def update_admin_catalogue(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
+):
+    if not file or not file.filename:
+        raise HTTPException(status_code=422, detail="Upload a PDF catalogue file")
+
+    file_url, file_size = await save_pdf_upload(
+        file,
+        folder="catalogue",
+        max_size_bytes=CATALOGUE_PDF_MAX_BYTES,
+    )
+    catalogue = _get_catalogue(db)
+    previous_file_url = catalogue.file_url if catalogue else None
+
+    if not catalogue:
+        catalogue = MarketingCatalogue(
+            file_url=file_url,
+            original_filename=file.filename,
+            file_size=file_size,
+        )
+        db.add(catalogue)
+    else:
+        catalogue.file_url = file_url
+        catalogue.original_filename = file.filename
+        catalogue.file_size = file_size
+
+    db.commit()
+    db.refresh(catalogue)
+
+    if previous_file_url and previous_file_url != file_url:
+        delete_uploaded_file(previous_file_url)
+
+    return catalogue
+
+
+@router.delete("/admin/catalogue", response_model=MarketingCatalogueDeleteResponse)
+def delete_admin_catalogue(db: Session = Depends(get_db), admin=Depends(get_current_admin)):
+    catalogue = _get_catalogue(db)
+    if not catalogue:
+        return {"message": "No catalogue uploaded."}
+
+    file_url = catalogue.file_url
+    db.delete(catalogue)
+    db.commit()
+    delete_uploaded_file(file_url)
+    return {"message": "Catalogue deleted."}
 
 
 @router.post("/subscribe", response_model=NewsletterSubscribeResponse)

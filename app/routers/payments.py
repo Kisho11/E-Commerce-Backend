@@ -23,6 +23,7 @@ router = APIRouter(prefix="/payments", tags=["Payments"])
 logger = logging.getLogger(__name__)
 REPLACEABLE_PAYMENT_INTENT_STATUSES = {"requires_payment_method", "canceled"}
 ACTIVE_PAYMENT_INTENT_STATUSES = {"requires_confirmation", "requires_action", "processing", "requires_capture"}
+STRIPE_PAYMENT_METHOD_TYPES = ["card", "link", "klarna"]
 
 
 def send_order_confirmation_email_safely(**payload):
@@ -272,7 +273,7 @@ def create_payment_intent(
         intent = stripe.PaymentIntent.create(
             amount=stripe_amount_for_order(order),
             currency=stripe_currency(),
-            automatic_payment_methods={"enabled": True},
+            payment_method_types=STRIPE_PAYMENT_METHOD_TYPES,
             metadata={"order_id": str(order.id), "user_id": str(current_user.id)},
         )
         order.payment_intent_id = intent.id

@@ -131,6 +131,29 @@ def ensure_runtime_schema_updates():
             except (OperationalError, ProgrammingError) as error:
                 if "already exists" not in str(error).lower():
                     raise
+        if "hero_image_url" not in marketing_columns:
+            try:
+                with engine.begin() as connection:
+                    connection.execute(text("ALTER TABLE marketing_banners ADD COLUMN hero_image_url VARCHAR"))
+            except (OperationalError, ProgrammingError) as error:
+                if "already exists" not in str(error).lower() and "duplicate column" not in str(error).lower():
+                    raise
+        else:
+            try:
+                with engine.begin() as connection:
+                    connection.execute(text("ALTER TABLE marketing_banners ALTER COLUMN hero_image_url DROP DEFAULT"))
+            except (OperationalError, ProgrammingError):
+                pass
+            try:
+                with engine.begin() as connection:
+                    connection.execute(text("ALTER TABLE marketing_banners ALTER COLUMN hero_image_url DROP NOT NULL"))
+            except (OperationalError, ProgrammingError):
+                pass
+        try:
+            with engine.begin() as connection:
+                connection.execute(text("UPDATE marketing_banners SET hero_image_url = NULL WHERE hero_image_url = '/main.webp'"))
+        except (OperationalError, ProgrammingError):
+            pass
 
     if "newsletter_subscribers" in table_names:
         subscriber_columns = {column["name"] for column in inspector.get_columns("newsletter_subscribers")}

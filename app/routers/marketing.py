@@ -31,6 +31,7 @@ from app.utils.file_upload import delete_uploaded_file, resolve_uploaded_file_pa
 router = APIRouter(prefix="/marketing", tags=["Marketing"])
 
 MARKETING_IMAGE_TYPES = {"image/jpeg", "image/png"}
+HERO_IMAGE_TYPES = {"image/jpeg", "image/png"}
 DISCOUNT_MIN = Decimal("0")
 DISCOUNT_MAX = Decimal("100")
 DEFAULT_CAMPAIGN_TYPE = "Marketing Update"
@@ -175,6 +176,7 @@ def get_marketing_settings(db: Session = Depends(get_db)):
     banner = _get_banner(db)
     return {
         "global_discount_percentage": banner.global_discount_percentage if banner else Decimal("0"),
+        "hero_image_url": banner.hero_image_url if banner else None,
     }
 
 
@@ -214,7 +216,33 @@ def update_marketing_settings(
     db.refresh(banner)
     return {
         "global_discount_percentage": banner.global_discount_percentage,
+        "hero_image_url": banner.hero_image_url,
     }
+
+
+@router.put("/admin/hero-image", response_model=MarketingBannerResponse)
+async def update_admin_hero_image(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
+):
+    if not file or not file.filename:
+        raise HTTPException(status_code=422, detail="Upload a PNG or JPEG homepage hero image")
+
+    if file.content_type not in HERO_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail="Homepage hero image must be a PNG or JPEG image")
+
+    banner = _get_or_create_banner(db)
+    previous_file_url = banner.hero_image_url
+    banner.hero_image_url = await save_upload(file, folder="marketing")
+
+    db.commit()
+    db.refresh(banner)
+
+    if previous_file_url and previous_file_url.startswith("/uploads/") and previous_file_url != banner.hero_image_url:
+        delete_uploaded_file(previous_file_url)
+
+    return banner
 
 
 @router.get("/admin/catalogue", response_model=Optional[MarketingCatalogueResponse])

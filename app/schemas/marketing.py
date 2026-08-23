@@ -10,6 +10,7 @@ BusinessType = Literal["shopowner", "shopfitter"]
 class MarketingBannerResponse(BaseModel):
     id: int
     image_url: Optional[str] = None
+    hero_image_url: Optional[str] = None
     cta_url: str = "/catalogue"
     is_active: bool = False
     global_discount_percentage: Decimal = Decimal("0")
@@ -21,6 +22,7 @@ class MarketingBannerResponse(BaseModel):
 
 class MarketingSettingsResponse(BaseModel):
     global_discount_percentage: Decimal = Decimal("0")
+    hero_image_url: Optional[str] = None
 
 
 class MarketingSettingsUpdate(BaseModel):

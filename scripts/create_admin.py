@@ -14,7 +14,7 @@ import app.models  # noqa: F401
 
 
 DEFAULT_EMAIL = "admin@elmshelf.com"
-DEFAULT_PASSWORD = "Admin@12345"
+DEFAULT_PASSWORD = "ElmShelf#A9vR72!Qp"
 DEFAULT_NAME = "System Administrator"
 
 

@@ -32,6 +32,7 @@ router = APIRouter(prefix="/marketing", tags=["Marketing"])
 
 MARKETING_IMAGE_TYPES = {"image/jpeg", "image/png"}
 HERO_IMAGE_TYPES = {"image/jpeg", "image/png"}
+SHOWROOM_IMAGE_TYPES = {"image/jpeg", "image/png"}
 DISCOUNT_MIN = Decimal("0")
 DISCOUNT_MAX = Decimal("100")
 DEFAULT_CAMPAIGN_TYPE = "Marketing Update"
@@ -177,6 +178,7 @@ def get_marketing_settings(db: Session = Depends(get_db)):
     return {
         "global_discount_percentage": banner.global_discount_percentage if banner else Decimal("0"),
         "hero_image_url": banner.hero_image_url if banner else None,
+        "showroom_image_url": banner.showroom_image_url if banner else None,
     }
 
 
@@ -217,6 +219,7 @@ def update_marketing_settings(
     return {
         "global_discount_percentage": banner.global_discount_percentage,
         "hero_image_url": banner.hero_image_url,
+        "showroom_image_url": banner.showroom_image_url,
     }
 
 
@@ -240,6 +243,31 @@ async def update_admin_hero_image(
     db.refresh(banner)
 
     if previous_file_url and previous_file_url.startswith("/uploads/") and previous_file_url != banner.hero_image_url:
+        delete_uploaded_file(previous_file_url)
+
+    return banner
+
+
+@router.put("/admin/showroom-image", response_model=MarketingBannerResponse)
+async def update_admin_showroom_image(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    admin=Depends(get_current_admin),
+):
+    if not file or not file.filename:
+        raise HTTPException(status_code=422, detail="Upload a PNG or JPEG showroom image")
+
+    if file.content_type not in SHOWROOM_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail="Showroom image must be a PNG or JPEG image")
+
+    banner = _get_or_create_banner(db)
+    previous_file_url = banner.showroom_image_url
+    banner.showroom_image_url = await save_upload(file, folder="marketing")
+
+    db.commit()
+    db.refresh(banner)
+
+    if previous_file_url and previous_file_url.startswith("/uploads/") and previous_file_url != banner.showroom_image_url:
         delete_uploaded_file(previous_file_url)
 
     return banner

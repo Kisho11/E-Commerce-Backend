@@ -8,6 +8,7 @@ class MarketingBanner(Base):
     id = Column(Integer, primary_key=True, index=True)
     image_url = Column(String, nullable=True)
     hero_image_url = Column(String, nullable=True)
+    showroom_image_url = Column(String, nullable=True)
     cta_url = Column(String, default="/catalogue", nullable=False)
     is_active = Column(Boolean, default=False, nullable=False)
     global_discount_percentage = Column(Numeric(5, 2), default=0, nullable=False)

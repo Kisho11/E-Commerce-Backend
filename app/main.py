@@ -154,6 +154,18 @@ def ensure_runtime_schema_updates():
                 connection.execute(text("UPDATE marketing_banners SET hero_image_url = NULL WHERE hero_image_url = '/main.webp'"))
         except (OperationalError, ProgrammingError):
             pass
+        if "showroom_image_url" not in marketing_columns:
+            try:
+                with engine.begin() as connection:
+                    connection.execute(text("ALTER TABLE marketing_banners ADD COLUMN showroom_image_url VARCHAR"))
+            except (OperationalError, ProgrammingError) as error:
+                if "already exists" not in str(error).lower() and "duplicate column" not in str(error).lower():
+                    raise
+        try:
+            with engine.begin() as connection:
+                connection.execute(text("UPDATE marketing_banners SET showroom_image_url = NULL WHERE showroom_image_url = '/elm-shelf-storefront.jpg'"))
+        except (OperationalError, ProgrammingError):
+            pass
 
     if "newsletter_subscribers" in table_names:
         subscriber_columns = {column["name"] for column in inspector.get_columns("newsletter_subscribers")}
